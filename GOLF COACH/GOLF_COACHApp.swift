@@ -12,7 +12,10 @@ import SwiftData
 struct GOLF_COACHApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Student.self,
+            LessonPackage.self,
+            LessonAppointment.self,
+            LessonVideo.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
