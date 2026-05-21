@@ -48,6 +48,7 @@ final class Student {
     @Relationship(deleteRule: .cascade) var packages: [LessonPackage]
     @Relationship(deleteRule: .cascade) var lessons: [LessonAppointment]
     @Relationship(deleteRule: .cascade) var videos: [LessonVideo]
+    @Relationship(deleteRule: .cascade) var coachAnalysisVideos: [CoachAnalysisVideo]
 
     init(
         name: String = "New Student",
@@ -58,7 +59,8 @@ final class Student {
         createdAt: Date = .now,
         packages: [LessonPackage] = [],
         lessons: [LessonAppointment] = [],
-        videos: [LessonVideo] = []
+        videos: [LessonVideo] = [],
+        coachAnalysisVideos: [CoachAnalysisVideo] = []
     ) {
         self.name = name
         self.phoneNumber = phoneNumber
@@ -69,6 +71,7 @@ final class Student {
         self.packages = packages
         self.lessons = lessons
         self.videos = videos
+        self.coachAnalysisVideos = coachAnalysisVideos
     }
 
     var activePackage: LessonPackage? {
@@ -84,6 +87,53 @@ final class Student {
 
     var remainingLessons: Int {
         packages.reduce(0) { $0 + $1.remainingLessons }
+    }
+}
+
+@Model
+final class CoachAnalysisVideo {
+    var title: String
+    var recordedAt: Date
+    var fileURLString: String?
+    var notes: String
+
+    init(
+        title: String = "Coach Analysis",
+        recordedAt: Date = .now,
+        fileURLString: String? = nil,
+        notes: String = ""
+    ) {
+        self.title = title
+        self.recordedAt = recordedAt
+        self.fileURLString = fileURLString
+        self.notes = notes
+    }
+
+    var fileURL: URL? {
+        guard let fileURLString else { return nil }
+
+        if let absoluteURL = URL(string: fileURLString),
+           absoluteURL.isFileURL,
+           FileManager.default.fileExists(atPath: absoluteURL.path) {
+            return absoluteURL
+        }
+
+        let fileName: String
+        if let absoluteURL = URL(string: fileURLString), absoluteURL.isFileURL {
+            fileName = absoluteURL.lastPathComponent
+        } else {
+            fileName = fileURLString
+        }
+
+        guard let videosDirectory = Self.videosDirectory else { return nil }
+        let resolvedURL = videosDirectory.appending(path: fileName)
+        return FileManager.default.fileExists(atPath: resolvedURL.path) ? resolvedURL : nil
+    }
+
+    private static var videosDirectory: URL? {
+        try? FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+            .appending(path: "GolfCoachVideos", directoryHint: .isDirectory)
     }
 }
 
@@ -182,21 +232,64 @@ final class LessonVideo {
     var recordedAt: Date
     var notes: String
     var fileURLString: String?
+    var lessonDate: Date?
+    var focusNotes: String?
+    var problemNotes: String?
+    var comparisonNotes: String?
+    var analysisDrawingData: String?
+    var trimStartSeconds: Double?
+    var trimEndSeconds: Double?
 
     init(
         title: String = "Swing Video",
         recordedAt: Date = .now,
         notes: String = "",
-        fileURLString: String? = nil
+        fileURLString: String? = nil,
+        lessonDate: Date? = nil,
+        focusNotes: String? = nil,
+        problemNotes: String? = nil,
+        comparisonNotes: String? = nil,
+        analysisDrawingData: String? = nil,
+        trimStartSeconds: Double? = nil,
+        trimEndSeconds: Double? = nil
     ) {
         self.title = title
         self.recordedAt = recordedAt
         self.notes = notes
         self.fileURLString = fileURLString
+        self.lessonDate = lessonDate
+        self.focusNotes = focusNotes
+        self.problemNotes = problemNotes
+        self.comparisonNotes = comparisonNotes
+        self.analysisDrawingData = analysisDrawingData
+        self.trimStartSeconds = trimStartSeconds
+        self.trimEndSeconds = trimEndSeconds
     }
 
     var fileURL: URL? {
         guard let fileURLString else { return nil }
-        return URL(string: fileURLString)
+
+        if let absoluteURL = URL(string: fileURLString),
+           absoluteURL.isFileURL,
+           FileManager.default.fileExists(atPath: absoluteURL.path) {
+            return absoluteURL
+        }
+
+        let fileName: String
+        if let absoluteURL = URL(string: fileURLString), absoluteURL.isFileURL {
+            fileName = absoluteURL.lastPathComponent
+        } else {
+            fileName = fileURLString
+        }
+
+        guard let videosDirectory = Self.videosDirectory else { return nil }
+        let resolvedURL = videosDirectory.appending(path: fileName)
+        return FileManager.default.fileExists(atPath: resolvedURL.path) ? resolvedURL : nil
+    }
+
+    private static var videosDirectory: URL? {
+        try? FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+            .appending(path: "GolfCoachVideos", directoryHint: .isDirectory)
     }
 }
