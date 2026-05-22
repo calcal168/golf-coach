@@ -405,6 +405,11 @@ struct StudentDetailView: View {
     @State private var isCapturingSwingVideo = false
     @State private var videoCaptureError: String?
     @State private var isShowingVideoCaptureError = false
+    @State private var packageToDeduct: LessonPackage?
+    @State private var lessonMessageBody = ""
+    @State private var isShowingLessonMessageComposer = false
+    @State private var lessonStatusMessage: String?
+    @State private var isShowingLessonStatus = false
 
     init(
         student: Student,
@@ -473,7 +478,9 @@ struct StudentDetailView: View {
                 }
             }
 
-            PackageListSection(student: student)
+            PackageListSection(student: student) { package in
+                packageToDeduct = package
+            }
             LessonListSection(student: student)
             VideoListSection(
                 student: student,
@@ -512,6 +519,73 @@ struct StudentDetailView: View {
         } message: {
             Text(videoCaptureError ?? "The video could not be saved.")
         }
+        .confirmationDialog(
+            "Deduct a Lesson",
+            isPresented: Binding(
+                get: { packageToDeduct != nil },
+                set: { if !$0 { packageToDeduct = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: packageToDeduct
+        ) { package in
+            Button("Confirm & Text Student") {
+                deductLesson(from: package)
+            }
+            Button("Cancel", role: .cancel) {
+                packageToDeduct = nil
+            }
+        } message: { package in
+            let remainingAfter = max(package.remainingLessons - 1, 0)
+            Text("Mark one lesson used? \(remainingAfter) lesson(s) will remain. \(student.name) will receive a text message confirming this.")
+        }
+        .sheet(isPresented: $isShowingLessonMessageComposer) {
+            MessageComposerView(
+                recipients: [student.phoneNumber],
+                body: lessonMessageBody,
+                onFinish: { resultMessage in
+                    if let resultMessage {
+                        lessonStatusMessage = resultMessage
+                        isShowingLessonStatus = true
+                    }
+                }
+            )
+        }
+        .alert("Lesson Update", isPresented: $isShowingLessonStatus, presenting: lessonStatusMessage) { _ in
+            Button("OK", role: .cancel) { }
+        } message: { msg in
+            Text(msg)
+        }
+    }
+
+    private func deductLesson(from package: LessonPackage) {
+        guard package.remainingLessons > 0 else { return }
+        package.lessonsUsed += 1
+        packageToDeduct = nil
+
+        let remaining = package.remainingLessons
+        let trimmedName = student.name.trimmingCharacters(in: .whitespaces)
+        let greeting = trimmedName.isEmpty ? "Hi" : "Hi \(trimmedName)"
+        let remainingClause: String
+        switch remaining {
+        case 0: remainingClause = "You have no lessons remaining in this package."
+        case 1: remainingClause = "You have 1 lesson remaining."
+        default: remainingClause = "You have \(remaining) lessons remaining."
+        }
+        lessonMessageBody = "\(greeting), your lesson today is logged. \(remainingClause)"
+
+        if student.phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty {
+            lessonStatusMessage = "Lesson deducted, but \(student.name) has no phone number on file."
+            isShowingLessonStatus = true
+            return
+        }
+
+        guard MFMessageComposeViewController.canSendText() else {
+            lessonStatusMessage = "Lesson deducted, but this device cannot send text messages. Try on a physical iPhone."
+            isShowingLessonStatus = true
+            return
+        }
+
+        isShowingLessonMessageComposer = true
     }
 
     private var hasUnsavedStudentDetails: Bool {
@@ -563,6 +637,7 @@ struct StudentDetailView: View {
 
 struct PackageListSection: View {
     @Bindable var student: Student
+    let onRequestDeduct: (LessonPackage) -> Void
 
     var sortedPackages: [LessonPackage] {
         student.packages.sorted { $0.purchaseDate > $1.purchaseDate }
@@ -595,9 +670,7 @@ struct PackageListSection: View {
                         .foregroundStyle(.secondary)
 
                         Button {
-                            if package.remainingLessons > 0 {
-                                package.lessonsUsed += 1
-                            }
+                            onRequestDeduct(package)
                         } label: {
                             Label("Deduct Lesson", systemImage: "minus.circle")
                         }
@@ -868,7 +941,7 @@ struct SimpleVideoPlayerSheet: View {
                     }
                 }
                 .onAppear {
-                    playWhenReady()
+                    prepareForPlayback()
                 }
                 .onDisappear {
                     player.pause()
@@ -876,12 +949,11 @@ struct SimpleVideoPlayerSheet: View {
         }
     }
 
-    private func playWhenReady() {
+    private func prepareForPlayback() {
         Task { @MainActor in
             player.pause()
             guard await VideoPlaybackReadiness.waitUntilReady(player.currentItem) else { return }
             await player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-            player.playImmediately(atRate: 1.0)
         }
     }
 }
@@ -1779,72 +1851,71 @@ struct DrawingToolPalette: View {
     @State private var isShowingColors = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            toolButton(.line, title: "Line", systemImage: "slash")
-            toolButton(.circle, title: "Circle", systemImage: "circle")
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                toolButton(.line, title: "Line", systemImage: "slash")
+                toolButton(.circle, title: "Circle", systemImage: "circle")
 
-            Divider()
-                .frame(width: 58)
-                .overlay(.white.opacity(0.35))
-
-            Button {
-                isShowingColors.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(selectedColor.color)
-                        .frame(width: 16, height: 16)
-                    Text("Color")
-                        .font(.caption2.weight(.bold))
+                Button {
+                    isShowingColors.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(selectedColor.color)
+                            .frame(width: 14, height: 14)
+                        Text("Color")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .frame(height: 32)
+                    .padding(.horizontal, 12)
                 }
-                .frame(width: 72, height: 42)
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(Color.black.opacity(0.72))
+                .clipShape(Capsule())
+
+                Button(action: onUndo) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.uturn.backward")
+                        Text("Undo")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .frame(height: 32)
+                    .padding(.horizontal, 12)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(canUndo ? Color.black.opacity(0.72) : Color.black.opacity(0.28))
+                .clipShape(Capsule())
+                .disabled(!canUndo)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .background(Color.black.opacity(0.72))
-            .clipShape(Capsule())
 
             if isShowingColors {
-                ForEach(SwingDrawingColor.allCases) { color in
-                    Button {
-                        selectedColor = color
-                        isShowingColors = false
-                    } label: {
-                        Circle()
-                            .fill(color.color)
-                            .frame(width: 34, height: 34)
-                            .overlay {
-                                Circle()
-                                    .stroke(selectedColor == color ? Color.white : Color.black.opacity(0.35), lineWidth: selectedColor == color ? 3 : 1)
-                            }
+                HStack(spacing: 10) {
+                    ForEach(SwingDrawingColor.allCases) { color in
+                        Button {
+                            selectedColor = color
+                            isShowingColors = false
+                        } label: {
+                            Circle()
+                                .fill(color.color)
+                                .frame(width: 28, height: 28)
+                                .overlay {
+                                    Circle()
+                                        .stroke(selectedColor == color ? Color.white : Color.black.opacity(0.35), lineWidth: selectedColor == color ? 3 : 1)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(color.rawValue) drawing color")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(color.rawValue) drawing color")
                 }
             }
-
-            Divider()
-                .frame(width: 58)
-                .overlay(.white.opacity(0.35))
-
-            Button(action: onUndo) {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.uturn.backward")
-                    Text("Undo")
-                        .font(.caption2.weight(.bold))
-                }
-                .frame(width: 72, height: 42)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .background(canUndo ? Color.black.opacity(0.72) : Color.black.opacity(0.28))
-            .clipShape(Capsule())
-            .disabled(!canUndo)
         }
-        .padding(8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(.black.opacity(0.45))
-        .clipShape(RoundedRectangle(cornerRadius: 22))
-        .contentShape(RoundedRectangle(cornerRadius: 22))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .contentShape(RoundedRectangle(cornerRadius: 18))
         .allowsHitTesting(true)
     }
 
@@ -1857,7 +1928,8 @@ struct DrawingToolPalette: View {
                 Text(title)
                     .font(.caption2.weight(.bold))
             }
-            .frame(width: 78, height: 44)
+            .frame(height: 32)
+            .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)
         .foregroundStyle(selectedTool == tool ? .black : .white)
@@ -1913,7 +1985,7 @@ struct VideoPlayerSheet: View {
         NavigationStack {
             Group {
                 if let player {
-                    ZStack(alignment: .trailing) {
+                    ZStack(alignment: .top) {
                         ControlledVideoPlayer(player: player, showsPlaybackControls: !isDrawingMode)
                             .background(.black)
 
@@ -1926,31 +1998,27 @@ struct VideoPlayerSheet: View {
                             onUndo: undoLastStroke
                         )
 
-                        if isDrawingMode {
-                            DrawingToolPalette(
-                                selectedTool: $selectedDrawingTool,
-                                selectedColor: $selectedDrawingColor,
-                                canUndo: !strokes.isEmpty,
-                                onUndo: undoLastStroke
-                            )
-                            .padding(.trailing, 12)
-                        }
-
-                        if isRecordingCoachAnalysis {
-                            VStack {
-                                HStack {
-                                    Label("Recording Coach Analysis", systemImage: "record.circle.fill")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(.red, in: Capsule())
-                                    Spacer()
-                                }
-                                Spacer()
+                        VStack(spacing: 8) {
+                            if isRecordingCoachAnalysis {
+                                Label("Recording Coach Analysis", systemImage: "record.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(.red, in: Capsule())
                             }
-                            .padding()
+
+                            if isDrawingMode {
+                                DrawingToolPalette(
+                                    selectedTool: $selectedDrawingTool,
+                                    selectedColor: $selectedDrawingColor,
+                                    canUndo: !strokes.isEmpty,
+                                    onUndo: undoLastStroke
+                                )
+                            }
                         }
+                        .padding(.top, 10)
+                        .frame(maxWidth: .infinity)
                     }
                 } else {
                     ContentUnavailableView(
@@ -1972,16 +2040,21 @@ struct VideoPlayerSheet: View {
 
                 if let url = video.fileURL {
                     ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Button {
-                                toggleCoachAnalysisRecording()
-                            } label: {
-                                Label(
-                                    isRecordingCoachAnalysis ? "Stop Coach Analysis Recording" : "Start Coach Analysis Recording",
-                                    systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "record.circle"
-                                )
-                            }
+                        Button {
+                            toggleCoachAnalysisRecording()
+                        } label: {
+                            Label(
+                                isRecordingCoachAnalysis ? "Stop Coach Analysis Recording" : "Start Coach Analysis Recording",
+                                systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "record.circle"
+                            )
+                            .labelStyle(.iconOnly)
+                            .foregroundStyle(.red)
+                        }
+                        .accessibilityLabel(isRecordingCoachAnalysis ? "Stop coach analysis recording" : "Start coach analysis recording")
+                    }
 
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
                             Button {
                                 isDrawingMode.toggle()
                                 if isDrawingMode {
@@ -2133,7 +2206,7 @@ struct VideoPlayerSheet: View {
                 updateDuration()
                 applyStoredTrimIfNeeded()
                 reloadPlayerForCurrentTrim()
-                playWhenReady()
+                prepareForPlayback()
             }
             .task {
                 await trackPlaybackTime()
@@ -2143,6 +2216,9 @@ struct VideoPlayerSheet: View {
                 player?.pause()
                 removeTrimEndBoundaryObserver()
                 removePlaybackProgressObserver()
+                if coachAnalysisRecorder.isRecording {
+                    stopCoachAnalysisRecording()
+                }
             }
             .sheet(isPresented: $isEditingVideo) {
                 EditVideoView(video: video)
@@ -2214,7 +2290,7 @@ struct VideoPlayerSheet: View {
         clampedTrimStart(video.trimStartSeconds ?? activeTrimStartSeconds)
     }
 
-    private func playWhenReady() {
+    private func prepareForPlayback() {
         Task { @MainActor in
             guard let player else { return }
 
@@ -2228,7 +2304,6 @@ struct VideoPlayerSheet: View {
             await player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
             currentTimeSeconds = 0
             isPreparingPlayback = false
-            player.playImmediately(atRate: playbackRate)
         }
     }
 
@@ -3489,6 +3564,54 @@ struct MailComposerView: UIViewControllerRepresentable {
             error: Error?
         ) {
             onFinish(EmailStatus(result: result, error: error))
+            dismiss()
+        }
+    }
+}
+
+struct MessageComposerView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let body: String
+    let onFinish: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let controller = MFMessageComposeViewController()
+        controller.messageComposeDelegate = context.coordinator
+        controller.recipients = recipients
+        controller.body = body
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) { }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(dismiss: dismiss, onFinish: onFinish)
+    }
+
+    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let dismiss: DismissAction
+        let onFinish: (String?) -> Void
+
+        init(dismiss: DismissAction, onFinish: @escaping (String?) -> Void) {
+            self.dismiss = dismiss
+            self.onFinish = onFinish
+        }
+
+        func messageComposeViewController(
+            _ controller: MFMessageComposeViewController,
+            didFinishWith result: MessageComposeResult
+        ) {
+            switch result {
+            case .sent:
+                onFinish("Text message sent.")
+            case .failed:
+                onFinish("Text message failed to send.")
+            case .cancelled:
+                onFinish(nil)
+            @unknown default:
+                onFinish(nil)
+            }
             dismiss()
         }
     }
