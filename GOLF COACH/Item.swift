@@ -88,6 +88,28 @@ final class Student {
     var remainingLessons: Int {
         packages.reduce(0) { $0 + $1.remainingLessons }
     }
+
+    var remainingValue: Decimal {
+        packages.reduce(Decimal.zero) { $0 + $1.remainingValue }
+    }
+
+    var lessonBalanceTextMessage: String {
+        lessonBalanceTextMessage(remainingLessons: remainingLessons)
+    }
+
+    func lessonBalanceTextMessage(remainingLessons: Int) -> String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let greeting = trimmedName.isEmpty ? "Hi" : "Hi \(trimmedName)"
+
+        switch remainingLessons {
+        case 0:
+            return "\(greeting), you currently have no golf lessons remaining."
+        case 1:
+            return "\(greeting), you currently have 1 golf lesson remaining."
+        default:
+            return "\(greeting), you currently have \(remainingLessons) golf lessons remaining."
+        }
+    }
 }
 
 @Model

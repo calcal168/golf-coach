@@ -97,32 +97,60 @@ struct StudentDirectoryView: View {
     @State private var navigationPath: [Student] = []
     @State private var highlightedStudentID: PersistentIdentifier?
     @State private var selectedStudentPrompt: String?
+    @State private var searchText = ""
+    @State private var studentsPendingDeletion: [Student] = []
+    @State private var isConfirmingStudentDeletion = false
+
+    private var filteredStudents: [Student] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return students }
+
+        return students.filter { student in
+            student.name.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             List {
                 if students.isEmpty {
-                    ContentUnavailableView(
-                        "No Students Yet",
-                        systemImage: "figure.golf",
-                        description: Text("Add a student to start tracking lessons, payments, notes, and videos.")
-                    )
+                    StudentDirectoryEmptyState()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 } else {
-                    ForEach(students) { student in
-                        Button {
-                            openStudent(student)
-                        } label: {
-                            StudentRow(
-                                student: student,
-                                isHighlighted: highlightedStudentID == student.persistentModelID
-                            )
+                    StudentDirectoryOverview(students: filteredStudents, totalStudentCount: students.count)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+
+                    if filteredStudents.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    } else {
+                        ForEach(filteredStudents) { student in
+                            Button {
+                                openStudent(student)
+                            } label: {
+                                StudentRow(
+                                    student: student,
+                                    isHighlighted: highlightedStudentID == student.persistentModelID
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                         }
-                        .buttonStyle(.plain)
+                        .onDelete(perform: stageStudentsForDeletion)
                     }
-                    .onDelete(perform: deleteStudents)
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(StudentDirectoryPalette.pageBackground)
             .navigationTitle("Golf Coach")
+            .searchable(text: $searchText, prompt: "Search students")
             .overlay(alignment: .top) {
                 if let selectedStudentPrompt {
                     StudentSelectionPrompt(studentName: selectedStudentPrompt)
@@ -156,6 +184,21 @@ struct StudentDirectoryView: View {
             .sheet(isPresented: $isExportingStudents) {
                 StudentExportView(students: students)
             }
+            .confirmationDialog(
+                "Delete Student",
+                isPresented: $isConfirmingStudentDeletion,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Student", role: .destructive) {
+                    deletePendingStudents()
+                }
+
+                Button("Cancel", role: .cancel) {
+                    studentsPendingDeletion = []
+                }
+            } message: {
+                Text(studentDeletionConfirmationMessage)
+            }
         }
     }
 
@@ -186,10 +229,152 @@ struct StudentDirectoryView: View {
         }
     }
 
-    private func deleteStudents(offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(students[index])
+    private var studentDeletionConfirmationMessage: String {
+        if studentsPendingDeletion.count == 1, let student = studentsPendingDeletion.first {
+            return "Delete \(student.name)? This removes their packages, lessons, notes, and videos from the app."
         }
+
+        return "Delete \(studentsPendingDeletion.count) students? This removes their packages, lessons, notes, and videos from the app."
+    }
+
+    private func stageStudentsForDeletion(offsets: IndexSet) {
+        studentsPendingDeletion = offsets.map { filteredStudents[$0] }
+        isConfirmingStudentDeletion = !studentsPendingDeletion.isEmpty
+    }
+
+    private func deletePendingStudents() {
+        for student in studentsPendingDeletion {
+            modelContext.delete(student)
+        }
+        studentsPendingDeletion = []
+    }
+}
+
+private enum StudentDirectoryPalette {
+    static let pageBackground = LinearGradient(
+        colors: [
+            Color(red: 0.94, green: 0.97, blue: 0.96),
+            Color(red: 0.91, green: 0.94, blue: 0.98)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let primary = Color(red: 0.08, green: 0.16, blue: 0.23)
+    static let secondary = Color(red: 0.34, green: 0.43, blue: 0.50)
+    static let fairway = Color(red: 0.10, green: 0.42, blue: 0.30)
+    static let gold = Color(red: 0.72, green: 0.52, blue: 0.18)
+    static let sky = Color(red: 0.15, green: 0.38, blue: 0.58)
+    static let rowBackground = Color.white.opacity(0.86)
+}
+
+struct StudentDirectoryEmptyState: View {
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(StudentDirectoryPalette.fairway.opacity(0.12))
+                    .frame(width: 92, height: 92)
+
+                Image(systemName: "figure.golf")
+                    .font(.system(size: 42, weight: .semibold))
+                    .foregroundStyle(StudentDirectoryPalette.fairway)
+            }
+
+            VStack(spacing: 6) {
+                Text("No Students Yet")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(StudentDirectoryPalette.primary)
+
+                Text("Add a student to start tracking packages, lesson progress, payments, and swing videos.")
+                    .font(.subheadline)
+                    .foregroundStyle(StudentDirectoryPalette.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 56)
+    }
+}
+
+struct StudentDirectoryOverview: View {
+    let students: [Student]
+    let totalStudentCount: Int
+
+    private var activeStudents: Int {
+        students.filter { $0.remainingLessons > 0 }.count
+    }
+
+    private var totalRemainingLessons: Int {
+        students.reduce(0) { $0 + $1.remainingLessons }
+    }
+
+    private var totalVideos: Int {
+        students.reduce(0) { $0 + $1.videos.count + $1.coachAnalysisVideos.count }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(StudentDirectoryPalette.fairway.opacity(0.14))
+                    Image(systemName: "flag.fill")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(StudentDirectoryPalette.fairway)
+                }
+                .frame(width: 46, height: 46)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Student Roster")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(StudentDirectoryPalette.primary)
+                    Text(totalStudentCount == students.count ? "Manage lesson balances, payments, notes, and swing analysis from one place." : "Showing \(students.count) of \(totalStudentCount) students.")
+                        .font(.caption)
+                        .foregroundStyle(StudentDirectoryPalette.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                StudentDirectoryMetric(title: "Students", value: "\(students.count)", tint: StudentDirectoryPalette.sky)
+                StudentDirectoryMetric(title: "Active", value: "\(activeStudents)", tint: StudentDirectoryPalette.fairway)
+                StudentDirectoryMetric(title: "Lessons", value: "\(totalRemainingLessons)", tint: StudentDirectoryPalette.gold)
+                StudentDirectoryMetric(title: "Videos", value: "\(totalVideos)", tint: StudentDirectoryPalette.primary)
+            }
+        }
+        .padding(16)
+        .background(StudentDirectoryPalette.rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.65), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 5)
+    }
+}
+
+struct StudentDirectoryMetric: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(tint)
+                .monospacedDigit()
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(StudentDirectoryPalette.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -229,34 +414,128 @@ struct StudentRow: View {
     let student: Student
     var isHighlighted = false
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(student.name)
-                    .font(.headline)
-                Spacer()
-                Text("\(student.remainingLessons) left")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(student.remainingLessons > 0 ? .green : .secondary)
-            }
+    private var initials: String {
+        let parts = student.name
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap { $0.first }
+        let value = String(parts).uppercased()
+        return value.isEmpty ? "S" : value
+    }
 
-            HStack(spacing: 12) {
-                if !student.phoneNumber.isEmpty {
-                    Label(student.phoneNumber, systemImage: "phone")
-                }
-                if !student.email.isEmpty {
-                    Label(student.email, systemImage: "envelope")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+    private var lastLessonText: String {
+        guard let lastLesson = student.lessons.sorted(by: { $0.scheduledAt > $1.scheduledAt }).first else {
+            return "No lessons scheduled"
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 6)
-        .background(isHighlighted ? Color.blue.opacity(0.16) : Color.clear)
+
+        return lastLesson.scheduledAt.formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    private var remainingTint: Color {
+        student.remainingLessons > 0 ? StudentDirectoryPalette.fairway : StudentDirectoryPalette.secondary
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(StudentDirectoryPalette.sky.opacity(0.14))
+                Text(initials)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(StudentDirectoryPalette.sky)
+            }
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(student.name)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(StudentDirectoryPalette.primary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    HStack(spacing: 5) {
+                        Image(systemName: student.remainingLessons > 0 ? "checkmark.seal.fill" : "exclamationmark.circle")
+                            .font(.caption2.weight(.semibold))
+                        Text("\(student.remainingLessons) left")
+                            .font(.caption.weight(.bold))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(remainingTint)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(remainingTint.opacity(0.10), in: Capsule())
+                }
+
+                HStack(spacing: 14) {
+                    StudentRowInfo(systemImage: "creditcard", text: CurrencyFormatter.string(from: student.totalPaid))
+                    StudentRowInfo(systemImage: "calendar", text: lastLessonText)
+                    StudentRowInfo(systemImage: "video", text: "\(student.videos.count + student.coachAnalysisVideos.count)")
+                }
+
+                HStack(spacing: 12) {
+                    if !student.phoneNumber.isEmpty {
+                        StudentRowInfo(systemImage: "phone", text: student.phoneNumber)
+                    }
+                    if !student.email.isEmpty {
+                        StudentRowInfo(systemImage: "envelope", text: student.email)
+                    }
+                }
+                .lineLimit(1)
+            }
+        }
+        .padding(14)
+        .background(isHighlighted ? StudentDirectoryPalette.sky.opacity(0.16) : StudentDirectoryPalette.rowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isHighlighted ? StudentDirectoryPalette.sky.opacity(0.35) : Color.white.opacity(0.62), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
         .animation(.easeInOut(duration: 0.12), value: isHighlighted)
+    }
+}
+
+struct StudentRowInfo: View {
+    let systemImage: String
+    let text: String
+
+    var body: some View {
+        Label {
+            Text(text)
+                .lineLimit(1)
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.caption2.weight(.semibold))
+        }
+        .font(.caption)
+        .foregroundStyle(StudentDirectoryPalette.secondary)
+    }
+}
+
+struct StudentContactButton: View {
+    let systemImage: String
+    let text: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label {
+                Text(text)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.10), in: Capsule())
+        }
+        .buttonStyle(.borderless)
     }
 }
 
@@ -390,7 +669,32 @@ struct StudentExportView: View {
     }
 }
 
+private enum StudentUndoAction {
+    case lessonDeduction(LessonPackage)
+    case packageDeletion([LessonPackage])
+
+    var buttonTitle: String {
+        switch self {
+        case .lessonDeduction:
+            return "Undo Lesson Deduction"
+        case .packageDeletion:
+            return "Undo Package Delete"
+        }
+    }
+}
+
+private enum StudentDetailSectionTint {
+    static let studentInfo = Color.blue.opacity(0.10)
+    static let notes = Color.mint.opacity(0.10)
+    static let account = Color.green.opacity(0.10)
+    static let packages = Color.orange.opacity(0.12)
+    static let lessons = Color.purple.opacity(0.10)
+    static let videos = Color.indigo.opacity(0.10)
+    static let coachAnalysis = Color.cyan.opacity(0.10)
+}
+
 struct StudentDetailView: View {
+    @Environment(\.openURL) private var openURL
     @Bindable var student: Student
     let onPlayVideo: (LessonVideo, Student) -> Void
     let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
@@ -410,6 +714,16 @@ struct StudentDetailView: View {
     @State private var isShowingLessonMessageComposer = false
     @State private var lessonStatusMessage: String?
     @State private var isShowingLessonStatus = false
+    @State private var packagesPendingDeletion: [LessonPackage] = []
+    @State private var isConfirmingPackageDeletion = false
+    @State private var packageDeletionMessageRecipients: [String] = []
+    @State private var packageDeletionMessageBody = ""
+    @State private var isShowingPackageDeletionMessageComposer = false
+    @State private var packageDeletionStatusMessage: String?
+    @State private var isShowingPackageDeletionStatus = false
+    @State private var lastUndoAction: StudentUndoAction?
+    @State private var undoStatusMessage: String?
+    @State private var isShowingUndoStatus = false
 
     init(
         student: Student,
@@ -427,78 +741,20 @@ struct StudentDetailView: View {
     }
 
     var body: some View {
-        Form {
-            Section("Student Information") {
-                TextField("Name", text: $name)
-                TextField("Phone", text: $phoneNumber)
-                    .keyboardType(.phonePad)
-                TextField("Email", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
+        undoAlertDetailView
+    }
 
-                Button {
-                    saveStudentDetails()
-                } label: {
-                    Label("Save Student Information", systemImage: "checkmark.circle")
-                }
-                .disabled(!hasUnsavedStudentDetails)
-            }
-
-            Section("Notes") {
-                TextField("History", text: $historyNotes, axis: .vertical)
-                    .lineLimit(3...8)
-                TextField("Current swing problems and goals", text: $focusAreas, axis: .vertical)
-                    .lineLimit(3...8)
-
-                Button {
-                    saveStudentDetails()
-                } label: {
-                    Label("Save Notes", systemImage: "checkmark.circle")
-                }
-                .disabled(!hasUnsavedStudentDetails)
-            }
-
-            Section("Account") {
-                LabeledContent("Lessons Remaining", value: "\(student.remainingLessons)")
-                LabeledContent("Total Paid", value: CurrencyFormatter.string(from: student.totalPaid))
-                if let activePackage = student.activePackage {
-                    LabeledContent("Active Package", value: activePackage.packageType.rawValue)
-                }
-
-                Button {
-                    isAddingPackage = true
-                } label: {
-                    Label("Add Payment / Package", systemImage: "creditcard")
-                }
-
-                Button {
-                    isAddingLesson = true
-                } label: {
-                    Label("Schedule Lesson", systemImage: "calendar.badge.plus")
-                }
-            }
-
-            PackageListSection(student: student) { package in
-                packageToDeduct = package
-            }
-            LessonListSection(student: student)
-            VideoListSection(
-                student: student,
-                onCaptureVideo: startVideoCapture,
-                onAddVideo: { isAddingVideo = true },
-                onPlayVideo: onPlayVideo
-            )
-            CoachAnalysisVideoSection(student: student, onPlayCoachAnalysis: onPlayCoachAnalysis)
-        }
+    private var navigationDetailView: some View {
+        detailForm
         .navigationTitle(student.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { startVideoCapture() } label: {
-                    Label("Capture Video", systemImage: "camera.fill")
-                }
-            }
+            captureVideoToolbarItem
         }
+    }
+
+    private var editorSheetsDetailView: some View {
+        navigationDetailView
         .sheet(isPresented: $isAddingPackage) {
             AddPackageView(student: student)
         }
@@ -519,6 +775,10 @@ struct StudentDetailView: View {
         } message: {
             Text(videoCaptureError ?? "The video could not be saved.")
         }
+    }
+
+    private var lessonMessagingDetailView: some View {
+        editorSheetsDetailView
         .confirmationDialog(
             "Deduct a Lesson",
             isPresented: Binding(
@@ -535,8 +795,8 @@ struct StudentDetailView: View {
                 packageToDeduct = nil
             }
         } message: { package in
-            let remainingAfter = max(package.remainingLessons - 1, 0)
-            Text("Mark one lesson used? \(remainingAfter) lesson(s) will remain. \(student.name) will receive a text message confirming this.")
+            let remainingAfter = max(student.remainingLessons - 1, 0)
+            Text("Mark one lesson used? \(remainingAfter) total lesson(s) will remain across all packages. \(student.name) will receive a text message confirming this.")
         }
         .sheet(isPresented: $isShowingLessonMessageComposer) {
             MessageComposerView(
@@ -557,21 +817,204 @@ struct StudentDetailView: View {
         }
     }
 
+    private var packageDeletionDetailView: some View {
+        lessonMessagingDetailView
+        .confirmationDialog(
+            "Delete Package",
+            isPresented: $isConfirmingPackageDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Text Student & Delete", role: .destructive) {
+                preparePackageDeletionMessage()
+            }
+
+            Button("Cancel", role: .cancel) {
+                packagesPendingDeletion = []
+            }
+        } message: {
+            Text(packageDeletionConfirmationMessage)
+        }
+        .sheet(isPresented: $isShowingPackageDeletionMessageComposer) {
+            MessageComposerView(
+                recipients: packageDeletionMessageRecipients,
+                body: packageDeletionMessageBody,
+                onFinish: { resultMessage in
+                    handlePackageDeletionMessageResult(resultMessage)
+                }
+            )
+        }
+        .alert("Package Update", isPresented: $isShowingPackageDeletionStatus, presenting: packageDeletionStatusMessage) { _ in
+            Button("OK", role: .cancel) { }
+        } message: { message in
+            Text(message)
+        }
+    }
+
+    private var undoAlertDetailView: some View {
+        packageDeletionDetailView
+        .alert("Undo Complete", isPresented: $isShowingUndoStatus, presenting: undoStatusMessage) { _ in
+            Button("OK", role: .cancel) { }
+        } message: { message in
+            Text(message)
+        }
+    }
+
+    private var detailForm: some View {
+        Form {
+            studentInformationSection
+            notesSection
+            accountSection
+            packageSection
+            LessonListSection(student: student)
+            videoSection
+            CoachAnalysisVideoSection(student: student, onPlayCoachAnalysis: onPlayCoachAnalysis)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var captureVideoToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                startVideoCapture()
+            } label: {
+                Label("Capture Video", systemImage: "camera.fill")
+            }
+        }
+    }
+
+    private var studentInformationSection: some View {
+        Section("Student Information") {
+            TextField("Name", text: $name)
+            TextField("Phone", text: $phoneNumber)
+                .keyboardType(.phonePad)
+            TextField("Email", text: $email)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+
+            HStack(spacing: 10) {
+                if let phoneURL {
+                    StudentContactButton(
+                        systemImage: "phone.fill",
+                        text: "Call Student",
+                        tint: StudentDirectoryPalette.fairway
+                    ) {
+                        openURL(phoneURL)
+                    }
+                }
+
+                if let emailURL {
+                    StudentContactButton(
+                        systemImage: "envelope.fill",
+                        text: "Email Student",
+                        tint: StudentDirectoryPalette.sky
+                    ) {
+                        openURL(emailURL)
+                    }
+                }
+            }
+
+            Button {
+                saveStudentDetails()
+            } label: {
+                Label("Save Student Information", systemImage: "checkmark.circle")
+            }
+            .disabled(!hasUnsavedStudentDetails)
+        }
+        .listRowBackground(StudentDetailSectionTint.studentInfo)
+    }
+
+    private var phoneURL: URL? {
+        let allowedCharacters = CharacterSet(charactersIn: "+0123456789")
+        let phoneNumber = phoneNumber.unicodeScalars
+            .filter { allowedCharacters.contains($0) }
+            .map(String.init)
+            .joined()
+        guard !phoneNumber.isEmpty else { return nil }
+        return URL(string: "tel:\(phoneNumber)")
+    }
+
+    private var emailURL: URL? {
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else { return nil }
+        return URL(string: "mailto:\(email)")
+    }
+
+    private var notesSection: some View {
+        Section("Notes") {
+            TextField("History", text: $historyNotes, axis: .vertical)
+                .lineLimit(3...8)
+            TextField("Current swing problems and goals", text: $focusAreas, axis: .vertical)
+                .lineLimit(3...8)
+
+            Button {
+                saveStudentDetails()
+            } label: {
+                Label("Save Notes", systemImage: "checkmark.circle")
+            }
+            .disabled(!hasUnsavedStudentDetails)
+        }
+        .listRowBackground(StudentDetailSectionTint.notes)
+    }
+
+    private var accountSection: some View {
+        Section("Account") {
+            LabeledContent("Lessons Remaining", value: "\(student.remainingLessons)")
+            LabeledContent("Total Paid", value: CurrencyFormatter.string(from: student.totalPaid))
+            if let activePackage = student.activePackage {
+                LabeledContent("Active Package", value: activePackage.packageType.rawValue)
+            }
+
+            Button {
+                isAddingPackage = true
+            } label: {
+                Label("Add Payment / Package", systemImage: "creditcard")
+            }
+
+            Button {
+                isAddingLesson = true
+            } label: {
+                Label("Schedule Lesson", systemImage: "calendar.badge.plus")
+            }
+
+            if let lastUndoAction {
+                Button {
+                    undoLastAction()
+                } label: {
+                    Label(lastUndoAction.buttonTitle, systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
+        .listRowBackground(StudentDetailSectionTint.account)
+    }
+
+    private var packageSection: some View {
+        PackageListSection(
+            student: student,
+            onRequestDeduct: { package in
+                packageToDeduct = package
+            },
+            onRequestDelete: { packages in
+                stagePackagesForDeletion(packages)
+            }
+        )
+    }
+
+    private var videoSection: some View {
+        VideoListSection(
+            student: student,
+            onCaptureVideo: startVideoCapture,
+            onAddVideo: { isAddingVideo = true },
+            onPlayVideo: onPlayVideo
+        )
+    }
+
     private func deductLesson(from package: LessonPackage) {
         guard package.remainingLessons > 0 else { return }
         package.lessonsUsed += 1
+        lastUndoAction = .lessonDeduction(package)
         packageToDeduct = nil
 
-        let remaining = package.remainingLessons
-        let trimmedName = student.name.trimmingCharacters(in: .whitespaces)
-        let greeting = trimmedName.isEmpty ? "Hi" : "Hi \(trimmedName)"
-        let remainingClause: String
-        switch remaining {
-        case 0: remainingClause = "You have no lessons remaining in this package."
-        case 1: remainingClause = "You have 1 lesson remaining."
-        default: remainingClause = "You have \(remaining) lessons remaining."
-        }
-        lessonMessageBody = "\(greeting), your lesson today is logged. \(remainingClause)"
+        lessonMessageBody = "\(student.lessonBalanceTextMessage) Your lesson today is logged."
 
         if student.phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty {
             lessonStatusMessage = "Lesson deducted, but \(student.name) has no phone number on file."
@@ -586,6 +1029,98 @@ struct StudentDetailView: View {
         }
 
         isShowingLessonMessageComposer = true
+    }
+
+    private var remainingLessonsAfterPendingPackageDeletion: Int {
+        let deletedLessons = packagesPendingDeletion.reduce(0) { $0 + $1.remainingLessons }
+        return max(student.remainingLessons - deletedLessons, 0)
+    }
+
+    private var packageDeletionConfirmationMessage: String {
+        let count = packagesPendingDeletion.count
+        let packageWord = count == 1 ? "package" : "packages"
+        return "Send \(student.name) a text message first, then delete \(count) \(packageWord)? \(remainingLessonsAfterPendingPackageDeletion) total lesson(s) will remain."
+    }
+
+    private func stagePackagesForDeletion(_ packages: [LessonPackage]) {
+        packagesPendingDeletion = packages
+        isConfirmingPackageDeletion = !packagesPendingDeletion.isEmpty
+    }
+
+    private func preparePackageDeletionMessage() {
+        let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        packageDeletionMessageRecipients = [phoneNumber]
+        packageDeletionMessageBody = "\(student.lessonBalanceTextMessage(remainingLessons: remainingLessonsAfterPendingPackageDeletion)) A package will be removed from your account."
+
+        guard !phoneNumber.isEmpty else {
+            packagesPendingDeletion = []
+            packageDeletionStatusMessage = "Package was not deleted because \(student.name) has no phone number on file."
+            isShowingPackageDeletionStatus = true
+            return
+        }
+
+        guard MFMessageComposeViewController.canSendText() else {
+            packagesPendingDeletion = []
+            packageDeletionStatusMessage = "Package was not deleted because this device cannot send text messages. Try on a physical iPhone."
+            isShowingPackageDeletionStatus = true
+            return
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !packagesPendingDeletion.isEmpty else { return }
+            isShowingPackageDeletionMessageComposer = true
+        }
+    }
+
+    private func handlePackageDeletionMessageResult(_ resultMessage: String?) {
+        if resultMessage == "Text message sent." {
+            commitPendingPackageDeletion()
+            packageDeletionStatusMessage = "Text message sent and package deleted."
+        } else if let resultMessage {
+            packagesPendingDeletion = []
+            packageDeletionStatusMessage = "\(resultMessage) Package was not deleted."
+        } else {
+            packagesPendingDeletion = []
+            packageDeletionStatusMessage = "Text message cancelled. Package was not deleted."
+        }
+
+        isShowingPackageDeletionStatus = true
+    }
+
+    private func commitPendingPackageDeletion() {
+        let deletedPackages = packagesPendingDeletion
+        for package in packagesPendingDeletion {
+            student.packages.removeAll { $0.persistentModelID == package.persistentModelID }
+        }
+        if !deletedPackages.isEmpty {
+            lastUndoAction = .packageDeletion(deletedPackages)
+        }
+        packagesPendingDeletion = []
+    }
+
+    private func undoLastAction() {
+        guard let lastUndoAction else { return }
+
+        switch lastUndoAction {
+        case .lessonDeduction(let package):
+            guard package.lessonsUsed > 0 else {
+                undoStatusMessage = "The lesson deduction could not be reversed because the package no longer has a deducted lesson."
+                isShowingUndoStatus = true
+                return
+            }
+            package.lessonsUsed -= 1
+            undoStatusMessage = "Lesson deduction reversed. \(student.name) now has \(student.remainingLessons) total lesson(s) remaining."
+
+        case .packageDeletion(let packages):
+            for package in packages where !student.packages.contains(where: { $0.persistentModelID == package.persistentModelID }) {
+                student.packages.append(package)
+            }
+            undoStatusMessage = "Package delete reversed. \(student.name) now has \(student.remainingLessons) total lesson(s) remaining."
+        }
+
+        self.lastUndoAction = nil
+        isShowingUndoStatus = true
     }
 
     private var hasUnsavedStudentDetails: Bool {
@@ -638,6 +1173,7 @@ struct StudentDetailView: View {
 struct PackageListSection: View {
     @Bindable var student: Student
     let onRequestDeduct: (LessonPackage) -> Void
+    let onRequestDelete: ([LessonPackage]) -> Void
 
     var sortedPackages: [LessonPackage] {
         student.packages.sorted { $0.purchaseDate > $1.purchaseDate }
@@ -679,12 +1215,11 @@ struct PackageListSection: View {
                     .padding(.vertical, 6)
                 }
                 .onDelete { offsets in
-                    for index in offsets {
-                        student.packages.removeAll { $0.persistentModelID == sortedPackages[index].persistentModelID }
-                    }
+                    onRequestDelete(offsets.map { sortedPackages[$0] })
                 }
             }
         }
+        .listRowBackground(StudentDetailSectionTint.packages)
     }
 }
 
@@ -745,6 +1280,7 @@ struct LessonListSection: View {
                 }
             }
         }
+        .listRowBackground(StudentDetailSectionTint.lessons)
         .sheet(item: $lessonForCalendar) { lesson in
             CalendarEventEditor(student: student, lesson: lesson)
         }
@@ -805,6 +1341,7 @@ struct VideoListSection: View {
                 }
             }
         }
+        .listRowBackground(StudentDetailSectionTint.videos)
         .sheet(item: $selectedVideoForEditing) { video in
             EditVideoView(video: video)
         }
@@ -884,6 +1421,7 @@ struct CoachAnalysisVideoSection: View {
                 .onDelete(perform: deleteAnalyses)
             }
         }
+        .listRowBackground(StudentDetailSectionTint.coachAnalysis)
     }
 
     private func openAnalysis(_ analysis: CoachAnalysisVideo) {
@@ -1207,6 +1745,12 @@ struct AddPackageView: View {
     @State private var lessonsPurchased = 5
     @State private var totalPaid = 0.0
     @State private var purchaseDate = Date.now
+    @State private var hasSavedPackage = false
+    @State private var messageRecipients: [String] = []
+    @State private var messageBody = ""
+    @State private var isShowingMessageComposer = false
+    @State private var saveStatusMessage: String?
+    @State private var isShowingSaveStatus = false
 
     var body: some View {
         NavigationStack {
@@ -1241,18 +1785,59 @@ struct AddPackageView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let package = LessonPackage(
-                            packageType: packageType,
-                            lessonsPurchased: lessonsPurchased,
-                            totalPaid: Decimal(totalPaid),
-                            purchaseDate: purchaseDate
-                        )
-                        student.packages.append(package)
-                        dismiss()
+                        savePackageAndTextBalance()
                     }
+                    .disabled(hasSavedPackage)
                 }
             }
+            .sheet(isPresented: $isShowingMessageComposer) {
+                MessageComposerView(
+                    recipients: messageRecipients,
+                    body: messageBody,
+                    onFinish: { _ in
+                        dismiss()
+                    }
+                )
+            }
+            .alert("Payment Saved", isPresented: $isShowingSaveStatus, presenting: saveStatusMessage) { _ in
+                Button("OK", role: .cancel) {
+                    dismiss()
+                }
+            } message: { message in
+                Text(message)
+            }
         }
+    }
+
+    private func savePackageAndTextBalance() {
+        guard !hasSavedPackage else { return }
+
+        let package = LessonPackage(
+            packageType: packageType,
+            lessonsPurchased: lessonsPurchased,
+            totalPaid: Decimal(totalPaid),
+            purchaseDate: purchaseDate
+        )
+        student.packages.append(package)
+        hasSavedPackage = true
+
+        let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        messageRecipients = [phoneNumber]
+        messageBody = "\(student.lessonBalanceTextMessage) Your payment has been recorded."
+
+        guard !phoneNumber.isEmpty else {
+            saveStatusMessage = "Payment saved, but \(student.name) has no phone number on file."
+            isShowingSaveStatus = true
+            return
+        }
+
+        guard MFMessageComposeViewController.canSendText() else {
+            saveStatusMessage = "Payment saved, but this device cannot send text messages. Try on a physical iPhone."
+            isShowingSaveStatus = true
+            return
+        }
+
+        isShowingMessageComposer = true
     }
 }
 
@@ -1454,31 +2039,65 @@ struct ScheduleView: View {
 
 struct PaymentsView: View {
     @Query(sort: \Student.name) private var students: [Student]
+    @State private var studentForPackage: Student?
+    @State private var studentForLesson: Student?
 
     var body: some View {
         NavigationStack {
-            List(students) { student in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(student.name)
-                            .font(.headline)
-                        Spacer()
-                        Text("\(student.remainingLessons) lessons")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    HStack {
-                        Text("Paid: \(CurrencyFormatter.string(from: student.totalPaid))")
-                        Spacer()
-                        if let package = student.activePackage {
-                            Text("Balance: \(CurrencyFormatter.string(from: package.remainingValue))")
+            List {
+                if students.isEmpty {
+                    ContentUnavailableView(
+                        "No Students",
+                        systemImage: "person.2",
+                        description: Text("Add a student before tracking payments.")
+                    )
+                } else {
+                    ForEach(students) { student in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(student.name)
+                                    .font(.headline)
+                                Spacer()
+                                Text("\(student.remainingLessons) lessons")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+
+                            HStack {
+                                Text("Paid: \(CurrencyFormatter.string(from: student.totalPaid))")
+                                Spacer()
+                                Text("Balance: \(CurrencyFormatter.string(from: student.remainingValue))")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                            HStack {
+                                Button {
+                                    studentForPackage = student
+                                } label: {
+                                    Label("Add Payment", systemImage: "creditcard")
+                                }
+
+                                Spacer()
+
+                                Button {
+                                    studentForLesson = student
+                                } label: {
+                                    Label("Schedule", systemImage: "calendar.badge.plus")
+                                }
+                            }
+                            .font(.caption.weight(.semibold))
                         }
+                        .padding(.vertical, 4)
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 4)
             }
             .navigationTitle("Payments")
+            .sheet(item: $studentForPackage) { student in
+                AddPackageView(student: student)
+            }
+            .sheet(item: $studentForLesson) { student in
+                AddLessonView(student: student)
+            }
         }
     }
 }
@@ -1649,6 +2268,11 @@ struct SwingDrawingOverlay: View {
     @Binding var selectedColor: SwingDrawingColor
     let isDrawingEnabled: Bool
     let onUndo: () -> Void
+    var onZoomBegan: () -> Void = { }
+    var onZoomChanged: (CGFloat) -> Void = { _ in }
+    var onZoomEnded: () -> Void = { }
+    var onZoomPanBegan: () -> Void = { }
+    var onZoomPanChanged: (CGSize) -> Void = { _ in }
 
     var body: some View {
         GeometryReader { proxy in
@@ -1672,7 +2296,12 @@ struct SwingDrawingOverlay: View {
                     currentStroke: $currentStroke,
                     selectedTool: selectedTool,
                     selectedColor: selectedColor,
-                    isDrawingEnabled: isDrawingEnabled
+                    isDrawingEnabled: isDrawingEnabled,
+                    onZoomBegan: onZoomBegan,
+                    onZoomChanged: onZoomChanged,
+                    onZoomEnded: onZoomEnded,
+                    onZoomPanBegan: onZoomPanBegan,
+                    onZoomPanChanged: onZoomPanChanged
                 )
             }
             .contentShape(Rectangle())
@@ -1730,6 +2359,11 @@ struct DrawingGestureCapture: UIViewRepresentable {
     let selectedTool: SwingDrawingTool
     let selectedColor: SwingDrawingColor
     let isDrawingEnabled: Bool
+    let onZoomBegan: () -> Void
+    let onZoomChanged: (CGFloat) -> Void
+    let onZoomEnded: () -> Void
+    let onZoomPanBegan: () -> Void
+    let onZoomPanChanged: (CGSize) -> Void
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
@@ -1742,6 +2376,18 @@ struct DrawingGestureCapture: UIViewRepresentable {
         oneFingerPan.cancelsTouchesInView = true
         oneFingerPan.delegate = context.coordinator
         view.addGestureRecognizer(oneFingerPan)
+
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        pinch.cancelsTouchesInView = true
+        pinch.delegate = context.coordinator
+        view.addGestureRecognizer(pinch)
+
+        let twoFingerPan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerPan(_:)))
+        twoFingerPan.minimumNumberOfTouches = 2
+        twoFingerPan.maximumNumberOfTouches = 2
+        twoFingerPan.cancelsTouchesInView = true
+        twoFingerPan.delegate = context.coordinator
+        view.addGestureRecognizer(twoFingerPan)
 
         return view
     }
@@ -1765,7 +2411,19 @@ struct DrawingGestureCapture: UIViewRepresentable {
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard parent.isDrawingEnabled else { return false }
-            return gestureRecognizer.numberOfTouches == 1
+            if gestureRecognizer is UIPinchGestureRecognizer {
+                return gestureRecognizer.numberOfTouches >= 2
+            }
+
+            if gestureRecognizer is UIPanGestureRecognizer {
+                return gestureRecognizer.numberOfTouches == 1 || gestureRecognizer.numberOfTouches == 2
+            }
+
+            return false
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
         }
 
         @objc func handleOneFingerPan(_ gesture: UIPanGestureRecognizer) {
@@ -1790,6 +2448,35 @@ struct DrawingGestureCapture: UIViewRepresentable {
                 commitStroke(in: view.bounds.size)
             case .cancelled, .failed:
                 resetStroke()
+            default:
+                break
+            }
+        }
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard parent.isDrawingEnabled else { return }
+
+            switch gesture.state {
+            case .began:
+                parent.onZoomBegan()
+            case .changed:
+                parent.onZoomChanged(gesture.scale)
+            case .ended, .cancelled, .failed:
+                parent.onZoomEnded()
+            default:
+                break
+            }
+        }
+
+        @objc func handleTwoFingerPan(_ gesture: UIPanGestureRecognizer) {
+            guard parent.isDrawingEnabled else { return }
+
+            switch gesture.state {
+            case .began:
+                parent.onZoomPanBegan()
+            case .changed:
+                let translation = gesture.translation(in: gesture.view)
+                parent.onZoomPanChanged(CGSize(width: translation.x, height: translation.y))
             default:
                 break
             }
@@ -1848,94 +2535,80 @@ struct DrawingToolPalette: View {
     @Binding var selectedColor: SwingDrawingColor
     let canUndo: Bool
     let onUndo: () -> Void
-    @State private var isShowingColors = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                toolButton(.line, title: "Line", systemImage: "slash")
-                toolButton(.circle, title: "Circle", systemImage: "circle")
-
-                Button {
-                    isShowingColors.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(selectedColor.color)
-                            .frame(width: 14, height: 14)
-                        Text("Color")
-                            .font(.caption2.weight(.bold))
-                    }
-                    .frame(height: 32)
-                    .padding(.horizontal, 12)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(Color.black.opacity(0.72))
-                .clipShape(Capsule())
-
-                Button(action: onUndo) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.uturn.backward")
-                        Text("Undo")
-                            .font(.caption2.weight(.bold))
-                    }
-                    .frame(height: 32)
-                    .padding(.horizontal, 12)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(canUndo ? Color.black.opacity(0.72) : Color.black.opacity(0.28))
-                .clipShape(Capsule())
-                .disabled(!canUndo)
+        Menu {
+            Button {
+                selectedTool = .line
+            } label: {
+                Label("Straight Line", systemImage: "slash")
             }
 
-            if isShowingColors {
-                HStack(spacing: 10) {
-                    ForEach(SwingDrawingColor.allCases) { color in
-                        Button {
-                            selectedColor = color
-                            isShowingColors = false
-                        } label: {
-                            Circle()
-                                .fill(color.color)
-                                .frame(width: 28, height: 28)
-                                .overlay {
-                                    Circle()
-                                        .stroke(selectedColor == color ? Color.white : Color.black.opacity(0.35), lineWidth: selectedColor == color ? 3 : 1)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(color.rawValue) drawing color")
-                    }
+            Button {
+                selectedTool = .circle
+            } label: {
+                Label("Circle", systemImage: "circle")
+            }
+
+            Button {
+                onUndo()
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!canUndo)
+
+            Divider()
+
+            Picker("Color", selection: $selectedColor) {
+                ForEach(SwingDrawingColor.allCases) { color in
+                    Label(color.rawValue.capitalized, systemImage: selectedColor == color ? "checkmark.circle.fill" : "circle")
+                        .tag(color)
                 }
             }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.black.opacity(0.45))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .contentShape(RoundedRectangle(cornerRadius: 18))
-        .allowsHitTesting(true)
-    }
-
-    private func toolButton(_ tool: SwingDrawingTool, title: String, systemImage: String) -> some View {
-        Button {
-            selectedTool = tool
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                Text(title)
-                    .font(.caption2.weight(.bold))
+            HStack(spacing: 7) {
+                Image(systemName: "pencil.tip.crop.circle")
+                Text("Draw")
+                    .font(.caption.weight(.bold))
+                Circle()
+                    .fill(selectedColor.color)
+                    .frame(width: 10, height: 10)
             }
-            .frame(height: 32)
+            .frame(height: 34)
             .padding(.horizontal, 12)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? .black : .white)
-        .background(selectedTool == tool ? Color.yellow : Color.black.opacity(0.72))
+        .foregroundStyle(.white)
+        .background(Color.black.opacity(0.72))
         .clipShape(Capsule())
-        .accessibilityLabel(tool.rawValue)
+        .accessibilityLabel("Drawing tools")
+    }
+}
+
+struct RecordingIndicatorButton: View {
+    let onStop: () -> Void
+    @State private var isPulsing = false
+
+    var body: some View {
+        Button(action: onStop) {
+            ZStack {
+                Circle()
+                    .fill(.red.opacity(isPulsing ? 0.18 : 0.45))
+                    .frame(width: 40, height: 40)
+                    .scaleEffect(isPulsing ? 1.35 : 1)
+
+                Image(systemName: "stop.circle.fill")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .background(.white, in: Circle())
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Stop coach analysis recording")
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
+        }
     }
 }
 
@@ -1972,6 +2645,10 @@ struct VideoPlayerSheet: View {
     @State private var coachAnalysisRecorder = CoachAnalysisRecorder()
     @State private var isRecordingCoachAnalysis = false
     @State private var isPreparingPlayback = false
+    @State private var analysisZoomScale: CGFloat = 1
+    @State private var analysisZoomStartScale: CGFloat = 1
+    @State private var analysisZoomOffset = CGSize.zero
+    @State private var analysisZoomStartOffset = CGSize.zero
 
     init(video: LessonVideo, studentName: String, student: Student? = nil) {
         self.video = video
@@ -1985,40 +2662,56 @@ struct VideoPlayerSheet: View {
         NavigationStack {
             Group {
                 if let player {
-                    ZStack(alignment: .top) {
-                        ControlledVideoPlayer(player: player, showsPlaybackControls: !isDrawingMode)
-                            .background(.black)
+                    GeometryReader { proxy in
+                        ZStack(alignment: .top) {
+                            ZStack {
+                                ControlledVideoPlayer(player: player, showsPlaybackControls: !isDrawingMode)
+                                    .background(.black)
 
-                        SwingDrawingOverlay(
-                            strokes: $strokes,
-                            currentStroke: $currentStroke,
-                            selectedTool: $selectedDrawingTool,
-                            selectedColor: $selectedDrawingColor,
-                            isDrawingEnabled: isDrawingMode,
-                            onUndo: undoLastStroke
-                        )
-
-                        VStack(spacing: 8) {
-                            if isRecordingCoachAnalysis {
-                                Label("Recording Coach Analysis", systemImage: "record.circle.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(.red, in: Capsule())
-                            }
-
-                            if isDrawingMode {
-                                DrawingToolPalette(
+                                SwingDrawingOverlay(
+                                    strokes: $strokes,
+                                    currentStroke: $currentStroke,
                                     selectedTool: $selectedDrawingTool,
                                     selectedColor: $selectedDrawingColor,
-                                    canUndo: !strokes.isEmpty,
-                                    onUndo: undoLastStroke
+                                    isDrawingEnabled: isDrawingMode,
+                                    onUndo: undoLastStroke,
+                                    onZoomBegan: beginAnalysisZoom,
+                                    onZoomChanged: { relativeScale in
+                                        updateAnalysisZoom(relativeScale: relativeScale, in: proxy.size)
+                                    },
+                                    onZoomEnded: endAnalysisZoom,
+                                    onZoomPanBegan: beginAnalysisZoomPan,
+                                    onZoomPanChanged: { translation in
+                                        updateAnalysisZoomPan(translation: translation, in: proxy.size)
+                                    }
                                 )
                             }
+                            .scaleEffect(analysisZoomScale)
+                            .offset(analysisZoomOffset)
+
+                            HStack(alignment: .top) {
+                                if isDrawingMode {
+                                    DrawingToolPalette(
+                                        selectedTool: $selectedDrawingTool,
+                                        selectedColor: $selectedDrawingColor,
+                                        canUndo: !strokes.isEmpty,
+                                        onUndo: undoLastStroke
+                                    )
+                                }
+
+                                Spacer()
+
+                                if isRecordingCoachAnalysis {
+                                    RecordingIndicatorButton {
+                                        stopCoachAnalysisRecording()
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                            .frame(maxWidth: .infinity)
                         }
-                        .padding(.top, 10)
-                        .frame(maxWidth: .infinity)
+                        .clipped()
                     }
                 } else {
                     ContentUnavailableView(
@@ -2126,6 +2819,7 @@ struct VideoPlayerSheet: View {
                         duration: durationSeconds,
                         playbackRate: playbackRate,
                         frameRate: sourceFrameRate,
+                        showsDetailedControls: !isRecordingCoachAnalysis,
                         onScrubBegan: {
                             isScrubbing = true
                             player?.pause()
@@ -2152,7 +2846,7 @@ struct VideoPlayerSheet: View {
                         }
                     )
 
-                    if isShowingInlineTrimControls {
+                    if isShowingInlineTrimControls && !isRecordingCoachAnalysis {
                         InlineTrimControls(
                             startTime: Binding(
                                 get: { draftTrimStartSeconds },
@@ -2174,7 +2868,7 @@ struct VideoPlayerSheet: View {
                                 applyTrim(startTime: draftTrimStartSeconds, endTime: draftTrimEndSeconds ?? sourceDurationSeconds)
                             }
                         )
-                    } else if hasActiveTrim {
+                    } else if hasActiveTrim && !isRecordingCoachAnalysis {
                         HStack {
                             Label(
                                 "Trimmed \(timeString(playbackStartSeconds)) - \(timeString(playbackEndSeconds))",
@@ -2284,6 +2978,49 @@ struct VideoPlayerSheet: View {
                 isShowingSaveStatus = true
             }
         }
+    }
+
+    private func beginAnalysisZoom() {
+        analysisZoomStartScale = analysisZoomScale
+    }
+
+    private func updateAnalysisZoom(relativeScale: CGFloat, in size: CGSize) {
+        analysisZoomScale = min(max(analysisZoomStartScale * relativeScale, 1), 5)
+        analysisZoomOffset = clampedAnalysisZoomOffset(analysisZoomOffset, scale: analysisZoomScale, in: size)
+    }
+
+    private func endAnalysisZoom() {
+        if analysisZoomScale <= 1.01 {
+            withAnimation(.easeOut(duration: 0.18)) {
+                analysisZoomScale = 1
+                analysisZoomOffset = .zero
+            }
+        }
+    }
+
+    private func beginAnalysisZoomPan() {
+        analysisZoomStartOffset = analysisZoomOffset
+    }
+
+    private func updateAnalysisZoomPan(translation: CGSize, in size: CGSize) {
+        guard analysisZoomScale > 1 else { return }
+
+        let proposedOffset = CGSize(
+            width: analysisZoomStartOffset.width + translation.width,
+            height: analysisZoomStartOffset.height + translation.height
+        )
+        analysisZoomOffset = clampedAnalysisZoomOffset(proposedOffset, scale: analysisZoomScale, in: size)
+    }
+
+    private func clampedAnalysisZoomOffset(_ offset: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
+        guard scale > 1 else { return .zero }
+
+        let horizontalLimit = (size.width * (scale - 1)) / 2
+        let verticalLimit = (size.height * (scale - 1)) / 2
+        return CGSize(
+            width: min(max(offset.width, -horizontalLimit), horizontalLimit),
+            height: min(max(offset.height, -verticalLimit), verticalLimit)
+        )
     }
 
     private var playbackStartSeconds: Double {
@@ -2770,19 +3507,144 @@ struct ControlledVideoPlayer: UIViewControllerRepresentable {
     let player: AVPlayer
     let showsPlaybackControls: Bool
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.showsPlaybackControls = showsPlaybackControls
-        controller.view.isUserInteractionEnabled = showsPlaybackControls
-        controller.videoGravity = .resizeAspect
+    func makeUIViewController(context: Context) -> ZoomableAVPlayerViewController {
+        let controller = ZoomableAVPlayerViewController()
+        controller.update(player: player, showsPlaybackControls: showsPlaybackControls)
         return controller
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        controller.player = player
-        controller.showsPlaybackControls = showsPlaybackControls
-        controller.view.isUserInteractionEnabled = showsPlaybackControls
+    func updateUIViewController(_ controller: ZoomableAVPlayerViewController, context: Context) {
+        controller.update(player: player, showsPlaybackControls: showsPlaybackControls)
+    }
+}
+
+final class ZoomableAVPlayerViewController: UIViewController, UIGestureRecognizerDelegate {
+    private let playerViewController = AVPlayerViewController()
+    private let minimumScale: CGFloat = 1
+    private let maximumScale: CGFloat = 5
+    private var currentScale: CGFloat = 1
+    private var pinchStartScale: CGFloat = 1
+    private var currentTranslation = CGPoint.zero
+    private var panStartTranslation = CGPoint.zero
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        view.backgroundColor = .black
+        view.clipsToBounds = true
+
+        addChild(playerViewController)
+        playerViewController.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(playerViewController.view)
+
+        NSLayoutConstraint.activate([
+            playerViewController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            playerViewController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            playerViewController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            playerViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        playerViewController.didMove(toParent: self)
+        playerViewController.videoGravity = .resizeAspect
+        configureGestures()
+    }
+
+    func update(player: AVPlayer, showsPlaybackControls: Bool) {
+        playerViewController.player = player
+        playerViewController.showsPlaybackControls = showsPlaybackControls
+        playerViewController.view.isUserInteractionEnabled = showsPlaybackControls
+    }
+
+    private func configureGestures() {
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinch.delegate = self
+        view.addGestureRecognizer(pinch)
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        pan.minimumNumberOfTouches = 2
+        pan.maximumNumberOfTouches = 2
+        pan.delegate = self
+        view.addGestureRecognizer(pan)
+
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(resetZoom))
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.delegate = self
+        view.addGestureRecognizer(doubleTap)
+    }
+
+    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            pinchStartScale = currentScale
+        case .changed:
+            currentScale = min(max(pinchStartScale * gesture.scale, minimumScale), maximumScale)
+            clampTranslation()
+            applyTransform()
+        case .ended, .cancelled, .failed:
+            if currentScale <= minimumScale {
+                resetZoom()
+            }
+        default:
+            break
+        }
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard currentScale > minimumScale else { return }
+
+        switch gesture.state {
+        case .began:
+            panStartTranslation = currentTranslation
+        case .changed:
+            let translation = gesture.translation(in: view)
+            currentTranslation = CGPoint(
+                x: panStartTranslation.x + translation.x,
+                y: panStartTranslation.y + translation.y
+            )
+            clampTranslation()
+            applyTransform()
+        default:
+            break
+        }
+    }
+
+    @objc private func resetZoom() {
+        currentScale = minimumScale
+        currentTranslation = .zero
+
+        UIView.animate(withDuration: 0.2) {
+            self.applyTransform()
+        }
+    }
+
+    private func clampTranslation() {
+        guard currentScale > minimumScale else {
+            currentTranslation = .zero
+            return
+        }
+
+        let horizontalLimit = (view.bounds.width * (currentScale - 1)) / 2
+        let verticalLimit = (view.bounds.height * (currentScale - 1)) / 2
+        currentTranslation.x = min(max(currentTranslation.x, -horizontalLimit), horizontalLimit)
+        currentTranslation.y = min(max(currentTranslation.y, -verticalLimit), verticalLimit)
+    }
+
+    private func applyTransform() {
+        let translation = CGAffineTransform(translationX: currentTranslation.x, y: currentTranslation.y)
+        let scale = CGAffineTransform(scaleX: currentScale, y: currentScale)
+        playerViewController.view.transform = translation.concatenating(scale)
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer is UIPanGestureRecognizer {
+            return currentScale > minimumScale
+        }
+
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
     }
 }
 
@@ -2791,6 +3653,7 @@ struct VideoReviewControls: View {
     let duration: Double
     let playbackRate: Float
     let frameRate: Float
+    var showsDetailedControls = true
     let onScrubBegan: () -> Void
     let onScrubChanged: (Double) -> Void
     let onScrubEnded: (Double) -> Void
@@ -2827,53 +3690,55 @@ struct VideoReviewControls: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Frame Review")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("Frame \(frameNumber) | \(Int(frameRate.rounded())) fps")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            if showsDetailedControls {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Frame Review")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("Frame \(frameNumber) | \(Int(frameRate.rounded())) fps")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button(action: onStepFrameBackward) {
+                            Label("Back 1 Frame", systemImage: "chevron.left.2")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(action: onStepFrameForward) {
+                            Label("Forward 1 Frame", systemImage: "chevron.right.2")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Spacer()
+                    }
+                    .font(.caption.weight(.semibold))
                 }
 
                 HStack(spacing: 8) {
-                    Button(action: onStepFrameBackward) {
-                        Label("Back 1 Frame", systemImage: "chevron.left.2")
+                    ForEach([0.1, 0.25, 0.5, 1.0], id: \.self) { rate in
+                        Button {
+                            onRateSelected(Float(rate))
+                        } label: {
+                            Text(rate == 1.0 ? "1x" : "\(rate, specifier: "%.2gx")")
+                                .font(.caption.weight(.semibold))
+                                .frame(minWidth: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(playbackRate == Float(rate) ? .blue : .secondary)
                     }
-                    .buttonStyle(.bordered)
-
-                    Button(action: onStepFrameForward) {
-                        Label("Forward 1 Frame", systemImage: "chevron.right.2")
-                    }
-                    .buttonStyle(.bordered)
 
                     Spacer()
-                }
-                .font(.caption.weight(.semibold))
-            }
 
-            HStack(spacing: 8) {
-                ForEach([0.1, 0.25, 0.5, 1.0], id: \.self) { rate in
-                    Button {
-                        onRateSelected(Float(rate))
-                    } label: {
-                        Text(rate == 1.0 ? "1x" : "\(rate, specifier: "%.2gx")")
-                            .font(.caption.weight(.semibold))
-                            .frame(minWidth: 44)
+                    Button(action: onTrim) {
+                        Label("Trim", systemImage: "scissors")
                     }
+                    .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
-                    .tint(playbackRate == Float(rate) ? .blue : .secondary)
                 }
-
-                Spacer()
-
-                Button(action: onTrim) {
-                    Label("Trim", systemImage: "scissors")
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.bordered)
             }
         }
     }
@@ -3583,7 +4448,10 @@ struct MessageComposerView: UIViewControllerRepresentable {
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) { }
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {
+        uiViewController.recipients = recipients
+        uiViewController.body = body
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(dismiss: dismiss, onFinish: onFinish)
