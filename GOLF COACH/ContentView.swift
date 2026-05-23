@@ -12,6 +12,7 @@ import PhotosUI
 import Photos
 import AVKit
 import AVFoundation
+import LocalAuthentication
 import ReplayKit
 import SwiftData
 import SwiftUI
@@ -19,13 +20,67 @@ import UniformTypeIdentifiers
 import UserNotifications
 import UIKit
 
+private enum AppLanguage: String, CaseIterable {
+    case english = "en"
+    case simplifiedChinese = "zh-Hans"
+
+    var locale: Locale {
+        Locale(identifier: rawValue)
+    }
+
+    var displayName: LocalizedStringKey {
+        switch self {
+        case .english:
+            return "English"
+        case .simplifiedChinese:
+            return "Simplified Chinese"
+        }
+    }
+}
+
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("selectedAppLanguage") private var selectedAppLanguage = AppLanguage.english.rawValue
     @State private var selectedVideo: VideoPlaybackSelection?
     @State private var selectedCoachAnalysis: CoachAnalysisPlaybackSelection?
     @State private var isPreparingVideo = false
     @State private var isPreparingCoachAnalysis = false
+    @State private var isUnlocked = false
+    @State private var isAuthenticating = false
+    @State private var authenticationMessage: String?
 
     var body: some View {
+        Group {
+            if isUnlocked {
+                applicationContent
+            } else {
+                AppLockView(
+                    isAuthenticating: isAuthenticating,
+                    message: authenticationMessage,
+                    onUnlock: authenticate
+                )
+            }
+        }
+        .task {
+            authenticate()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                authenticate()
+            case .background, .inactive:
+                lockApp()
+            @unknown default:
+                lockApp()
+            }
+        }
+        .environment(
+            \.locale,
+            AppLanguage(rawValue: selectedAppLanguage)?.locale ?? AppLanguage.english.locale
+        )
+    }
+
+    private var applicationContent: some View {
         TabView {
             StudentDirectoryView(
                 onPlayVideo: openVideo,
@@ -58,6 +113,51 @@ struct ContentView: View {
         }
     }
 
+    private func authenticate() {
+        guard !isUnlocked, !isAuthenticating, scenePhase == .active else { return }
+
+        let context = LAContext()
+        context.localizedCancelTitle = "Cancel"
+
+        var authenticationError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authenticationError) else {
+            authenticationMessage = "Set a passcode on this device to protect student information."
+            return
+        }
+
+        isAuthenticating = true
+        authenticationMessage = nil
+
+        context.evaluatePolicy(
+            .deviceOwnerAuthentication,
+            localizedReason: "Unlock Golf Coach to view student information."
+        ) { success, error in
+            Task { @MainActor in
+                isAuthenticating = false
+
+                if success, scenePhase == .active {
+                    isUnlocked = true
+                    authenticationMessage = nil
+                } else if success {
+                    isUnlocked = false
+                } else if let error = error as? LAError, error.code == .userCancel {
+                    authenticationMessage = nil
+                } else {
+                    authenticationMessage = "Authentication failed. Try again to open the app."
+                }
+            }
+        }
+    }
+
+    private func lockApp() {
+        isUnlocked = false
+        authenticationMessage = nil
+        selectedVideo = nil
+        selectedCoachAnalysis = nil
+        isPreparingVideo = false
+        isPreparingCoachAnalysis = false
+    }
+
     private func openVideo(_ video: LessonVideo, student: Student) {
         guard selectedVideo == nil, !isPreparingVideo, video.fileURL != nil else {
             print("DEBUG ContentView selectedVideo ignored duplicate tap: \(video.title)")
@@ -88,8 +188,104 @@ struct ContentView: View {
     }
 }
 
+private struct AppLockView: View {
+    let isAuthenticating: Bool
+    let message: String?
+    let onUnlock: () -> Void
+
+    var body: some View {
+        ZStack {
+            StudentDirectoryPalette.pageBackground
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundStyle(StudentDirectoryPalette.primary)
+                    .frame(width: 72, height: 72)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(spacing: 8) {
+                    Text("Golf Coach Locked")
+                        .font(.title3.weight(.semibold))
+
+                    Text("Authenticate to access student information.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                if let message {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 280)
+                }
+
+                Button(action: onUnlock) {
+                    Label {
+                        if isAuthenticating {
+                            Text("Authenticating...")
+                        } else {
+                            Text("Unlock App")
+                        }
+                    } icon: {
+                        Image(systemName: isAuthenticating ? "faceid" : "lock.open.fill")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: 240)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(StudentDirectoryPalette.primary)
+                .disabled(isAuthenticating)
+            }
+            .padding(28)
+        }
+    }
+}
+
+private struct GolfCoachNavigationTitle: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(StudentDirectoryPalette.brandGreen)
+
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .offset(x: 1, y: -2)
+
+                Circle()
+                    .fill(StudentDirectoryPalette.brandGold)
+                    .frame(width: 6, height: 6)
+                    .offset(x: -8, y: 11)
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("GOLF COACH")
+                    .font(.system(size: 18, weight: .bold, design: .default))
+                    .foregroundStyle(StudentDirectoryPalette.brandGreen)
+
+                Text("Academy")
+                    .font(.system(size: 10, weight: .semibold, design: .default))
+                    .foregroundStyle(StudentDirectoryPalette.brandGold)
+                    .textCase(.uppercase)
+            }
+        }
+        .minimumScaleFactor(0.82)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Golf Coach Academy")
+    }
+}
+
 struct StudentDirectoryView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("selectedAppLanguage") private var selectedAppLanguage = AppLanguage.english.rawValue
     @Query(sort: \Student.name) private var students: [Student]
     let onPlayVideo: (LessonVideo, Student) -> Void
     let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
@@ -100,6 +296,16 @@ struct StudentDirectoryView: View {
     @State private var searchText = ""
     @State private var studentsPendingDeletion: [Student] = []
     @State private var isConfirmingStudentDeletion = false
+    @State private var backupDocument: GolfCoachBackupDocument?
+    @State private var isExportingBackup = false
+    @State private var isImportingBackup = false
+    @State private var backupPendingRestore: GolfCoachBackupSnapshot?
+    @State private var isConfirmingBackupRestore = false
+    @State private var backupStatusTitle = ""
+    @State private var backupStatusMessage = ""
+    @State private var isShowingBackupStatus = false
+    @State private var hasAutomaticBackup = false
+    @State private var isComposingMarketingEmail = false
 
     private var filteredStudents: [Student] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,6 +314,17 @@ struct StudentDirectoryView: View {
         return students.filter { student in
             student.name.localizedCaseInsensitiveContains(query)
         }
+    }
+
+    private var marketingEmailRecipients: [String] {
+        Array(
+            Set(
+                students
+                    .map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                    .filter { !$0.isEmpty }
+            )
+        )
+        .sorted()
     }
 
     var body: some View {
@@ -149,7 +366,8 @@ struct StudentDirectoryView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(StudentDirectoryPalette.pageBackground)
-            .navigationTitle("Golf Coach")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search students")
             .overlay(alignment: .top) {
                 if let selectedStudentPrompt {
@@ -166,13 +384,70 @@ struct StudentDirectoryView: View {
                 )
             }
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    GolfCoachNavigationTitle()
+                }
+
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        isExportingStudents = true
+                    Menu {
+                        Menu {
+                            ForEach(AppLanguage.allCases, id: \.self) { language in
+                                Button {
+                                    selectedAppLanguage = language.rawValue
+                                } label: {
+                                    if selectedAppLanguage == language.rawValue {
+                                        Label(language.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Text(language.displayName)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Language", systemImage: "globe")
+                        }
+
+                        Divider()
+
+                        Button {
+                            isExportingStudents = true
+                        } label: {
+                            Label("Export Spreadsheet", systemImage: "tablecells")
+                        }
+                        .disabled(students.isEmpty)
+
+                        Divider()
+
+                        Button {
+                            createBackup()
+                        } label: {
+                            Label("Back Up Student Data", systemImage: "externaldrive.badge.plus")
+                        }
+                        .disabled(students.isEmpty)
+
+                        Button {
+                            isImportingBackup = true
+                        } label: {
+                            Label("Restore Backup", systemImage: "externaldrive.badge.checkmark")
+                        }
+
+                        Button {
+                            prepareLatestAutomaticBackupRestore()
+                        } label: {
+                            Label("Restore Latest Automatic Backup", systemImage: "clock.arrow.circlepath")
+                        }
+                        .disabled(!hasAutomaticBackup)
                     } label: {
-                        Label("Export", systemImage: "square.and.arrow.up")
+                        Label("Data", systemImage: "externaldrive")
                     }
-                    .disabled(students.isEmpty)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isComposingMarketingEmail = true
+                    } label: {
+                        Label("Marketing Email", systemImage: "megaphone")
+                    }
+                    .disabled(marketingEmailRecipients.isEmpty)
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -181,8 +456,47 @@ struct StudentDirectoryView: View {
                     }
                 }
             }
+            .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .sheet(isPresented: $isExportingStudents) {
                 StudentExportView(students: students)
+            }
+            .sheet(isPresented: $isComposingMarketingEmail) {
+                MarketingEmailView(recipients: marketingEmailRecipients)
+            }
+            .fileExporter(
+                isPresented: $isExportingBackup,
+                document: backupDocument,
+                contentType: .json,
+                defaultFilename: GolfCoachBackupSnapshot.fileName
+            ) { result in
+                switch result {
+                case .success:
+                    showBackupStatus(
+                        title: "Backup Saved",
+                        message: "Student profiles, packages, and appointments were saved. Video files are not included in this backup."
+                    )
+                case .failure(let error):
+                    showBackupStatus(title: "Backup Failed", message: error.localizedDescription)
+                }
+            }
+            .fileImporter(isPresented: $isImportingBackup, allowedContentTypes: [.json]) { result in
+                prepareRestore(from: result)
+            }
+            .confirmationDialog(
+                "Restore Backup",
+                isPresented: $isConfirmingBackupRestore,
+                titleVisibility: .visible
+            ) {
+                Button("Replace Current Student Data", role: .destructive) {
+                    restorePendingBackup()
+                }
+
+                Button("Cancel", role: .cancel) {
+                    backupPendingRestore = nil
+                }
+            } message: {
+                Text(backupRestoreConfirmationMessage)
             }
             .confirmationDialog(
                 "Delete Student",
@@ -198,6 +512,26 @@ struct StudentDirectoryView: View {
                 }
             } message: {
                 Text(studentDeletionConfirmationMessage)
+            }
+            .alert(backupStatusTitle, isPresented: $isShowingBackupStatus) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(backupStatusMessage)
+            }
+            .task {
+                updateAutomaticBackupAvailability()
+                createAutomaticBackupIfNeeded()
+
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(15 * 60))
+                    guard !Task.isCancelled else { return }
+                    createAutomaticBackupIfNeeded()
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    createAutomaticBackupIfNeeded()
+                }
             }
         }
     }
@@ -248,6 +582,97 @@ struct StudentDirectoryView: View {
         }
         studentsPendingDeletion = []
     }
+
+    private var backupRestoreConfirmationMessage: String {
+        guard let backupPendingRestore else { return "" }
+        return "Replace current student data with \(backupPendingRestore.students.count) student record(s) from this backup? Existing student records will be deleted. Video files are not restored."
+    }
+
+    private func createBackup() {
+        let snapshot = GolfCoachBackupSnapshot(students: students)
+        backupDocument = GolfCoachBackupDocument(snapshot: snapshot)
+        isExportingBackup = true
+    }
+
+    private func prepareRestore(from result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let accessedResource = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessedResource {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let data = try Data(contentsOf: url)
+            let snapshot = try GolfCoachBackupSnapshot.decode(from: data)
+            backupPendingRestore = snapshot
+            isConfirmingBackupRestore = true
+        } catch {
+            showBackupStatus(title: "Restore Failed", message: error.localizedDescription)
+        }
+    }
+
+    private func prepareLatestAutomaticBackupRestore() {
+        do {
+            guard let snapshot = try AutomaticBackupStore.latestSnapshot() else {
+                showBackupStatus(title: "No Automatic Backup", message: "There is no automatic backup available to restore.")
+                updateAutomaticBackupAvailability()
+                return
+            }
+            backupPendingRestore = snapshot
+            isConfirmingBackupRestore = true
+        } catch {
+            showBackupStatus(title: "Restore Failed", message: error.localizedDescription)
+        }
+    }
+
+    private func restorePendingBackup() {
+        guard let backupPendingRestore else { return }
+
+        navigationPath.removeAll()
+        for student in students {
+            modelContext.delete(student)
+        }
+        for backupStudent in backupPendingRestore.students {
+            modelContext.insert(backupStudent.makeStudent())
+        }
+
+        do {
+            try modelContext.save()
+            self.backupPendingRestore = nil
+            showBackupStatus(
+                title: "Backup Restored",
+                message: "\(backupPendingRestore.students.count) student record(s) restored. Video files are not included in student backups."
+            )
+        } catch {
+            showBackupStatus(title: "Restore Failed", message: error.localizedDescription)
+        }
+    }
+
+    private func showBackupStatus(title: String, message: String) {
+        backupStatusTitle = title
+        backupStatusMessage = message
+        isShowingBackupStatus = true
+    }
+
+    private func createAutomaticBackupIfNeeded() {
+        guard AutomaticBackupStore.isBackupDue() else {
+            updateAutomaticBackupAvailability()
+            return
+        }
+
+        do {
+            try AutomaticBackupStore.save(snapshot: GolfCoachBackupSnapshot(students: students))
+            updateAutomaticBackupAvailability()
+        } catch {
+            showBackupStatus(title: "Automatic Backup Failed", message: error.localizedDescription)
+        }
+    }
+
+    private func updateAutomaticBackupAvailability() {
+        hasAutomaticBackup = AutomaticBackupStore.hasBackup
+    }
 }
 
 private enum StudentDirectoryPalette {
@@ -263,6 +688,8 @@ private enum StudentDirectoryPalette {
     static let secondary = Color(red: 0.34, green: 0.43, blue: 0.50)
     static let fairway = Color(red: 0.10, green: 0.42, blue: 0.30)
     static let gold = Color(red: 0.72, green: 0.52, blue: 0.18)
+    static let brandGreen = Color(red: 0.03, green: 0.29, blue: 0.20)
+    static let brandGold = Color(red: 0.72, green: 0.57, blue: 0.26)
     static let sky = Color(red: 0.15, green: 0.38, blue: 0.58)
     static let rowBackground = Color.white.opacity(0.86)
 }
@@ -330,10 +757,17 @@ struct StudentDirectoryOverview: View {
                     Text("Student Roster")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(StudentDirectoryPalette.primary)
-                    Text(totalStudentCount == students.count ? "Manage lesson balances, payments, notes, and swing analysis from one place." : "Showing \(students.count) of \(totalStudentCount) students.")
-                        .font(.caption)
-                        .foregroundStyle(StudentDirectoryPalette.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if totalStudentCount == students.count {
+                        Text("Manage lesson balances, payments, notes, and swing analysis from one place.")
+                            .font(.caption)
+                            .foregroundStyle(StudentDirectoryPalette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Showing \(students.count) of \(totalStudentCount) students.")
+                            .font(.caption)
+                            .foregroundStyle(StudentDirectoryPalette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Spacer()
@@ -357,7 +791,7 @@ struct StudentDirectoryOverview: View {
 }
 
 struct StudentDirectoryMetric: View {
-    let title: String
+    let title: LocalizedStringKey
     let value: String
     let tint: Color
 
@@ -536,6 +970,130 @@ struct StudentContactButton: View {
             .background(tint.opacity(0.10), in: Capsule())
         }
         .buttonStyle(.borderless)
+    }
+}
+
+struct MarketingEmailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("marketingSenderEmail") private var senderEmail = ""
+    let recipients: [String]
+    @State private var subject = ""
+    @State private var messageBody = ""
+    @State private var confirmsPermission = false
+    @State private var isShowingMailComposer = false
+    @State private var statusTitle = ""
+    @State private var statusMessage = ""
+    @State private var isShowingStatus = false
+
+    private var canComposeEmail: Bool {
+        !recipients.isEmpty &&
+        isValidSenderEmail &&
+        !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        confirmsPermission
+    }
+
+    private var isValidSenderEmail: Bool {
+        let email = senderEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return email.contains("@") && email.contains(".")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Audience") {
+                    LabeledContent("Students with Email", value: "\(recipients.count)")
+                    Label("Recipients are hidden from each other using Bcc.", systemImage: "lock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Sender") {
+                    TextField("Your business email address", text: $senderEmail)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("This address appears in To. Students remain in Bcc.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Promotion") {
+                    TextField("Subject", text: $subject)
+                    TextField("Event or promotion message", text: $messageBody, axis: .vertical)
+                        .lineLimit(8...14)
+                }
+
+                Section {
+                    Toggle("I have permission to send this promotion", isOn: $confirmsPermission)
+                } footer: {
+                    Text("Include your business identity and an unsubscribe instruction in promotional email.")
+                }
+            }
+            .navigationTitle("Marketing Email")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Compose") {
+                        if MFMailComposeViewController.canSendMail() {
+                            isShowingMailComposer = true
+                        } else {
+                            statusTitle = "Mail Unavailable"
+                            statusMessage = "Set up Mail on this iPhone before composing a marketing email."
+                            isShowingStatus = true
+                        }
+                    }
+                    .disabled(!canComposeEmail)
+                }
+            }
+            .sheet(isPresented: $isShowingMailComposer) {
+                MarketingMailComposerView(
+                    toRecipient: senderEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+                    blindCopyRecipients: recipients,
+                    subject: subject,
+                    body: messageBody,
+                    onFinish: handleEmailResult
+                )
+            }
+            .alert(statusTitle, isPresented: $isShowingStatus) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(statusMessage)
+            }
+        }
+    }
+
+    private func handleEmailResult(_ result: MFMailComposeResult, error: Error?) {
+        if let error {
+            statusTitle = "Email Failed"
+            statusMessage = error.localizedDescription
+        } else {
+            switch result {
+            case .sent:
+                statusTitle = "Email Queued"
+                statusMessage = "Mail accepted the promotional email for sending."
+            case .saved:
+                statusTitle = "Draft Saved"
+                statusMessage = "The promotional email was saved as a draft."
+            case .cancelled:
+                statusTitle = "Email Cancelled"
+                statusMessage = "The promotional email was not sent."
+            case .failed:
+                statusTitle = "Email Failed"
+                statusMessage = "Mail could not queue the promotional email."
+            @unknown default:
+                statusTitle = "Email Status Unknown"
+                statusMessage = "Check Mail for the status of this message."
+            }
+        }
+
+        isShowingStatus = true
     }
 }
 
@@ -4434,6 +4992,50 @@ struct MailComposerView: UIViewControllerRepresentable {
     }
 }
 
+struct MarketingMailComposerView: UIViewControllerRepresentable {
+    let toRecipient: String
+    let blindCopyRecipients: [String]
+    let subject: String
+    let body: String
+    let onFinish: (MFMailComposeResult, Error?) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let controller = MFMailComposeViewController()
+        controller.mailComposeDelegate = context.coordinator
+        controller.setToRecipients([toRecipient])
+        controller.setBccRecipients(blindCopyRecipients)
+        controller.setSubject(subject)
+        controller.setMessageBody(body, isHTML: false)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) { }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(dismiss: dismiss, onFinish: onFinish)
+    }
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let dismiss: DismissAction
+        let onFinish: (MFMailComposeResult, Error?) -> Void
+
+        init(dismiss: DismissAction, onFinish: @escaping (MFMailComposeResult, Error?) -> Void) {
+            self.dismiss = dismiss
+            self.onFinish = onFinish
+        }
+
+        func mailComposeController(
+            _ controller: MFMailComposeViewController,
+            didFinishWith result: MFMailComposeResult,
+            error: Error?
+        ) {
+            onFinish(result, error)
+            dismiss()
+        }
+    }
+}
+
 struct MessageComposerView: UIViewControllerRepresentable {
     let recipients: [String]
     let body: String
@@ -4542,6 +5144,241 @@ struct EmailStatus: Identifiable {
             systemImage = "questionmark.circle"
             tint = .secondary
         }
+    }
+}
+
+struct GolfCoachBackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+
+    let snapshot: GolfCoachBackupSnapshot
+
+    init(snapshot: GolfCoachBackupSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        snapshot = try GolfCoachBackupSnapshot.decode(from: data)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: try snapshot.encodedData())
+    }
+}
+
+struct GolfCoachBackupSnapshot: Codable {
+    static let currentFormatVersion = 1
+
+    let formatVersion: Int
+    let createdAt: Date
+    let students: [StudentBackupRecord]
+
+    static var fileName: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "GolfCoachBackup-\(formatter.string(from: .now)).json"
+    }
+
+    init(students: [Student]) {
+        formatVersion = Self.currentFormatVersion
+        createdAt = .now
+        self.students = students.map(StudentBackupRecord.init)
+    }
+
+    func encodedData() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(self)
+    }
+
+    static func decode(from data: Data) throws -> GolfCoachBackupSnapshot {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let snapshot = try decoder.decode(GolfCoachBackupSnapshot.self, from: data)
+        guard snapshot.formatVersion == currentFormatVersion else {
+            throw BackupRestoreError.unsupportedVersion(snapshot.formatVersion)
+        }
+        return snapshot
+    }
+}
+
+struct StudentBackupRecord: Codable {
+    let name: String
+    let phoneNumber: String
+    let email: String
+    let historyNotes: String
+    let focusAreas: String
+    let createdAt: Date
+    let packages: [LessonPackageBackupRecord]
+    let lessons: [LessonAppointmentBackupRecord]
+
+    init(student: Student) {
+        name = student.name
+        phoneNumber = student.phoneNumber
+        email = student.email
+        historyNotes = student.historyNotes
+        focusAreas = student.focusAreas
+        createdAt = student.createdAt
+        packages = student.packages.map(LessonPackageBackupRecord.init)
+        lessons = student.lessons.map(LessonAppointmentBackupRecord.init)
+    }
+
+    func makeStudent() -> Student {
+        Student(
+            name: name,
+            phoneNumber: phoneNumber,
+            email: email,
+            historyNotes: historyNotes,
+            focusAreas: focusAreas,
+            createdAt: createdAt,
+            packages: packages.map { $0.makePackage() },
+            lessons: lessons.map { $0.makeLesson() }
+        )
+    }
+}
+
+struct LessonPackageBackupRecord: Codable {
+    let packageTypeRawValue: String
+    let lessonsPurchased: Int
+    let lessonsUsed: Int
+    let totalPaid: Decimal
+    let purchaseDate: Date
+
+    init(package: LessonPackage) {
+        packageTypeRawValue = package.packageTypeRawValue
+        lessonsPurchased = package.lessonsPurchased
+        lessonsUsed = package.lessonsUsed
+        totalPaid = package.totalPaid
+        purchaseDate = package.purchaseDate
+    }
+
+    func makePackage() -> LessonPackage {
+        LessonPackage(
+            packageType: LessonPackageType(rawValue: packageTypeRawValue) ?? .custom,
+            lessonsPurchased: lessonsPurchased,
+            lessonsUsed: lessonsUsed,
+            totalPaid: totalPaid,
+            purchaseDate: purchaseDate
+        )
+    }
+}
+
+struct LessonAppointmentBackupRecord: Codable {
+    let title: String
+    let scheduledAt: Date
+    let durationMinutes: Int
+    let location: String
+    let notes: String
+    let reminderLeadTimeRawValue: String
+    let isCompleted: Bool
+
+    init(lesson: LessonAppointment) {
+        title = lesson.title
+        scheduledAt = lesson.scheduledAt
+        durationMinutes = lesson.durationMinutes
+        location = lesson.location
+        notes = lesson.notes
+        reminderLeadTimeRawValue = lesson.reminderLeadTimeRawValue
+        isCompleted = lesson.isCompleted
+    }
+
+    func makeLesson() -> LessonAppointment {
+        LessonAppointment(
+            title: title,
+            scheduledAt: scheduledAt,
+            durationMinutes: durationMinutes,
+            location: location,
+            notes: notes,
+            reminderLeadTime: ReminderLeadTime(rawValue: reminderLeadTimeRawValue) ?? .none,
+            isCompleted: isCompleted
+        )
+    }
+}
+
+enum BackupRestoreError: LocalizedError {
+    case unsupportedVersion(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedVersion(let version):
+            return "This backup uses unsupported format version \(version)."
+        }
+    }
+}
+
+enum AutomaticBackupStore {
+    private static let interval: TimeInterval = 3 * 60 * 60
+    private static let maximumBackupCount = 30
+    private static let lastBackupDateKey = "GolfCoachLastAutomaticBackupDate"
+    private static let filePrefix = "GolfCoachAutomaticBackup-"
+
+    static var hasBackup: Bool {
+        (try? latestBackupURL()) != nil
+    }
+
+    static func isBackupDue(now: Date = .now) -> Bool {
+        guard let lastBackupDate = UserDefaults.standard.object(forKey: lastBackupDateKey) as? Date else {
+            return true
+        }
+        return now.timeIntervalSince(lastBackupDate) >= interval
+    }
+
+    static func save(snapshot: GolfCoachBackupSnapshot) throws {
+        let directory = try backupsDirectory()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        let url = directory.appending(path: "\(filePrefix)\(formatter.string(from: snapshot.createdAt)).json")
+        try snapshot.encodedData().write(to: url, options: .atomic)
+        UserDefaults.standard.set(snapshot.createdAt, forKey: lastBackupDateKey)
+        try pruneOldBackups(in: directory)
+    }
+
+    static func latestSnapshot() throws -> GolfCoachBackupSnapshot? {
+        guard let url = try latestBackupURL() else { return nil }
+        return try GolfCoachBackupSnapshot.decode(from: Data(contentsOf: url))
+    }
+
+    private static func backupsDirectory() throws -> URL {
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = appSupport.appending(path: "AutomaticBackups", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func latestBackupURL() throws -> URL? {
+        let directory = try backupsDirectory()
+        return try backupURLs(in: directory).first
+    }
+
+    private static func pruneOldBackups(in directory: URL) throws {
+        let excessBackups = try backupURLs(in: directory).dropFirst(maximumBackupCount)
+        for url in excessBackups {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private static func backupURLs(in directory: URL) throws -> [URL] {
+        let resourceKeys: Set<URLResourceKey> = [.contentModificationDateKey]
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: .skipsHiddenFiles
+        )
+        return try urls
+            .filter { $0.lastPathComponent.hasPrefix(filePrefix) && $0.pathExtension == "json" }
+            .sorted {
+                let leftDate = try $0.resourceValues(forKeys: resourceKeys).contentModificationDate ?? .distantPast
+                let rightDate = try $1.resourceValues(forKeys: resourceKeys).contentModificationDate ?? .distantPast
+                return leftDate > rightDate
+            }
     }
 }
 

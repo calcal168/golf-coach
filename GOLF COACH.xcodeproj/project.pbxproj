@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		134045E32FC234110002C56E /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 134045E22FC234110002C56E /* Localizable.xcstrings */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		13360FD72FBD20160082D03B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		13360FC72FBD20150082D03B /* GOLF COACH.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "GOLF COACH.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13360FD62FBD20160082D03B /* GOLF COACHTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "GOLF COACHTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13360FE02FBD20160082D03B /* GOLF COACHUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "GOLF COACHUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		134045E22FC234110002C56E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +84,7 @@
 				13360FD92FBD20160082D03B /* GOLF COACHTests */,
 				13360FE32FBD20160082D03B /* GOLF COACHUITests */,
 				13360FC82FBD20150082D03B /* Products */,
+				134045E22FC234110002C56E /* Localizable.xcstrings */,
 			);
 			sourceTree = "<group>";
 		};
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				134045E32FC234110002C56E /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -402,6 +409,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture student swing videos";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Use Face ID to protect student information in Golf Coach.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio with student swing videos";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save student swing videos to your Camera Roll.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Access student swing videos";
@@ -444,6 +452,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture student swing videos";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Use Face ID to protect student information in Golf Coach.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio with student swing videos";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save student swing videos to your Camera Roll.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Access student swing videos";
