@@ -130,17 +130,20 @@ final class CoachAnalysisVideo {
     var recordedAt: Date
     var fileURLString: String?
     var notes: String
+    var lessonDate: Date?
 
     init(
         title: String = "Coach Analysis",
         recordedAt: Date = .now,
         fileURLString: String? = nil,
-        notes: String = ""
+        notes: String = "",
+        lessonDate: Date? = nil
     ) {
         self.title = title
         self.recordedAt = recordedAt
         self.fileURLString = fileURLString
         self.notes = notes
+        self.lessonDate = lessonDate
     }
 
     var fileURL: URL? {

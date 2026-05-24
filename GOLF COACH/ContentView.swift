@@ -1246,6 +1246,7 @@ struct StudentDetailView: View {
     @State private var sessionNoteDefaultDate: Date = .now
     @State private var sessionNoteForEditing: LessonSessionNote?
     @State private var sessionVideoForEditing: LessonVideo?
+    @State private var sessionAnalysisForEditing: CoachAnalysisVideo?
     @State private var packageToDeduct: LessonPackage?
     @State private var lessonMessageBody = ""
     @State private var isShowingLessonMessageComposer = false
@@ -1326,6 +1327,9 @@ struct StudentDetailView: View {
         }
         .sheet(item: $sessionVideoForEditing) { video in
             EditVideoView(video: video)
+        }
+        .sheet(item: $sessionAnalysisForEditing) { analysis in
+            EditCoachAnalysisView(analysis: analysis)
         }
         .alert("Video Capture Failed", isPresented: $isShowingVideoCaptureError) {
             Button("OK", role: .cancel) { }
@@ -1429,7 +1433,8 @@ struct StudentDetailView: View {
                     isAddingSessionNote = true
                 },
                 onEditNote: { sessionNoteForEditing = $0 },
-                onEditVideo: { sessionVideoForEditing = $0 }
+                onEditVideo: { sessionVideoForEditing = $0 },
+                onEditAnalysis: { sessionAnalysisForEditing = $0 }
             )
         }
         .onChange(of: name) { saveStudentDetails() }
@@ -2333,6 +2338,7 @@ struct LessonSessionsSection: View {
     let onAddSessionNote: (Date) -> Void
     let onEditNote: (LessonSessionNote) -> Void
     let onEditVideo: (LessonVideo) -> Void
+    let onEditAnalysis: (CoachAnalysisVideo) -> Void
 
     @State private var notePendingDeletion: LessonSessionNote?
     @State private var videoPendingDeletion: LessonVideo?
@@ -2347,7 +2353,7 @@ struct LessonSessionsSection: View {
             groups[day]!.swingVideos.append(video)
         }
         for analysis in student.coachAnalysisVideos {
-            let day = cal.startOfDay(for: analysis.recordedAt)
+            let day = cal.startOfDay(for: analysis.lessonDate ?? analysis.recordedAt)
             if groups[day] == nil { groups[day] = LessonSessionGroup(date: day) }
             groups[day]!.analysisVideos.append(analysis)
         }
@@ -2423,6 +2429,8 @@ struct LessonSessionsSection: View {
                     ForEach(group.analysisVideos.sorted { $0.recordedAt > $1.recordedAt }) { analysis in
                         SessionAnalysisRow(analysis: analysis) {
                             onPlayCoachAnalysis(analysis)
+                        } onEdit: {
+                            onEditAnalysis(analysis)
                         }
                     }
                     .onDelete { offsets in
@@ -2553,6 +2561,9 @@ struct SessionNoteField: View {
 struct SessionAnalysisRow: View {
     let analysis: CoachAnalysisVideo
     let onPlay: () -> Void
+    let onEdit: () -> Void
+
+    var displayDate: Date { analysis.lessonDate ?? analysis.recordedAt }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -2564,7 +2575,7 @@ struct SessionAnalysisRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(analysis.title)
                     .font(.subheadline.weight(.semibold))
-                Text(analysis.recordedAt, format: .dateTime.hour().minute())
+                Text(displayDate, format: .dateTime.month().day().year())
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !analysis.notes.isEmpty {
@@ -2577,16 +2588,71 @@ struct SessionAnalysisRow: View {
 
             Spacer()
 
-            if analysis.fileURL != nil {
-                Button(action: onPlay) {
-                    Image(systemName: "play.circle")
+            HStack(spacing: 12) {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil.circle")
                         .font(.title3)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
+
+                if analysis.fileURL != nil {
+                    Button(action: onPlay) {
+                        Image(systemName: "play.circle")
+                            .font(.title3)
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+struct EditCoachAnalysisView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var analysis: CoachAnalysisVideo
+    @State private var title: String
+    @State private var lessonDate: Date
+    @State private var notes: String
+
+    init(analysis: CoachAnalysisVideo) {
+        self.analysis = analysis
+        _title = State(initialValue: analysis.title)
+        _lessonDate = State(initialValue: analysis.lessonDate ?? analysis.recordedAt)
+        _notes = State(initialValue: analysis.notes)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Analysis Info") {
+                    TextField("Title", text: $title)
+                    DatePicker("Lesson Date", selection: $lessonDate, displayedComponents: .date)
+                }
+                Section("Notes") {
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Edit Analysis")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        analysis.title = title
+                        analysis.lessonDate = lessonDate
+                        analysis.notes = notes
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
@@ -2688,7 +2754,6 @@ struct SessionNoteShareView: View {
     let note: LessonSessionNote
     let studentName: String
     @Environment(\.dismiss) private var dismiss
-    @State private var isSharing = false
 
     var formattedText: String {
         let dateStr = note.sessionDate.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
@@ -2719,7 +2784,7 @@ struct SessionNoteShareView: View {
                 Divider()
 
                 Button {
-                    isSharing = true
+                    presentShareSheet()
                 } label: {
                     Label("Send Notes", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
@@ -2734,11 +2799,86 @@ struct SessionNoteShareView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .sheet(isPresented: $isSharing) {
-                ShareSheet(activityItems: [formattedText])
-                    .presentationDetents([.medium, .large])
-            }
         }
+    }
+
+    private func presentShareSheet() {
+        let image = renderNotesAsImage(formattedText)
+        let source = NoteShareItemSource(text: formattedText, image: image)
+        let controller = UIActivityViewController(activityItems: [source], applicationActivities: nil)
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = scene.windows.first?.rootViewController else { return }
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = topVC.view
+            popover.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        topVC.present(controller, animated: true)
+    }
+
+    private func renderNotesAsImage(_ text: String) -> UIImage {
+        let padding: CGFloat = 24
+        let maxWidth: CGFloat = 340
+        let titleFont = UIFont.boldSystemFont(ofSize: 15)
+        let bodyFont = UIFont.systemFont(ofSize: 14)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4
+        paragraphStyle.paragraphSpacing = 8
+
+        let attributed = NSMutableAttributedString()
+        for (i, block) in text.components(separatedBy: "\n\n").enumerated() {
+            if i > 0 { attributed.append(NSAttributedString(string: "\n\n")) }
+            let isHeader = block == block.uppercased() && !block.contains("\n") && block.count < 40
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: isHeader ? titleFont : bodyFont,
+                .foregroundColor: UIColor.black,
+                .paragraphStyle: paragraphStyle
+            ]
+            attributed.append(NSAttributedString(string: block, attributes: attrs))
+        }
+
+        let boundingRect = attributed.boundingRect(
+            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        let size = CGSize(width: maxWidth + padding * 2, height: ceil(boundingRect.height) + padding * 2)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            UIColor.white.setFill()
+            UIRectFill(CGRect(origin: .zero, size: size))
+            attributed.draw(in: CGRect(x: padding, y: padding, width: maxWidth, height: ceil(boundingRect.height)))
+        }
+    }
+}
+
+// Serves plain text to most apps; serves a rendered image to WeChat (which rejects plain text).
+final class NoteShareItemSource: NSObject, UIActivityItemSource {
+    private let text: String
+    private let image: UIImage
+
+    init(text: String, image: UIImage) {
+        self.text = text
+        self.image = image
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        return image
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        let raw = activityType?.rawValue.lowercased() ?? ""
+        if raw.contains("tencent") || raw.contains("wechat") || raw.contains("weixin") {
+            return image
+        }
+        return text
     }
 }
 
@@ -4018,7 +4158,8 @@ struct VideoPlayerSheet: View {
                     title: "Coach Analysis",
                     recordedAt: .now,
                     fileURLString: VideoFileStore.persistedFileName(for: outputURL),
-                    notes: "Analysis for \(video.title)"
+                    notes: "Analysis for \(video.title)",
+                    lessonDate: video.lessonDate ?? video.recordedAt
                 )
                 student?.coachAnalysisVideos.append(analysis)
                 saveStatus = VideoSaveStatus(
