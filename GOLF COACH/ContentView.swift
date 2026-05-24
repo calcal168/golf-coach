@@ -68,8 +68,10 @@ struct ContentView: View {
             switch newPhase {
             case .active:
                 authenticate()
-            case .background, .inactive:
+            case .background:
                 lockApp()
+            case .inactive:
+                break
             @unknown default:
                 lockApp()
             }
@@ -483,30 +485,20 @@ struct StudentDirectoryView: View {
             .fileImporter(isPresented: $isImportingBackup, allowedContentTypes: [.json]) { result in
                 prepareRestore(from: result)
             }
-            .confirmationDialog(
-                "Restore Backup",
-                isPresented: $isConfirmingBackupRestore,
-                titleVisibility: .visible
-            ) {
+            .alert("Restore Backup", isPresented: $isConfirmingBackupRestore) {
                 Button("Replace Current Student Data", role: .destructive) {
                     restorePendingBackup()
                 }
-
                 Button("Cancel", role: .cancel) {
                     backupPendingRestore = nil
                 }
             } message: {
                 Text(backupRestoreConfirmationMessage)
             }
-            .confirmationDialog(
-                "Delete Student",
-                isPresented: $isConfirmingStudentDeletion,
-                titleVisibility: .visible
-            ) {
+            .alert("Delete Student", isPresented: $isConfirmingStudentDeletion) {
                 Button("Delete Student", role: .destructive) {
                     deletePendingStudents()
                 }
-
                 Button("Cancel", role: .cancel) {
                     studentsPendingDeletion = []
                 }
@@ -948,30 +940,6 @@ struct StudentRowInfo: View {
     }
 }
 
-struct StudentContactButton: View {
-    let systemImage: String
-    let text: String
-    let tint: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label {
-                Text(text)
-                    .lineLimit(1)
-            } icon: {
-                Image(systemName: systemImage)
-                    .font(.caption2.weight(.semibold))
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(tint.opacity(0.10), in: Capsule())
-        }
-        .buttonStyle(.borderless)
-    }
-}
 
 struct MarketingEmailView: View {
     @Environment(\.dismiss) private var dismiss
@@ -1259,14 +1227,25 @@ struct StudentDetailView: View {
     @State private var name: String
     @State private var phoneNumber: String
     @State private var email: String
-    @State private var historyNotes: String
-    @State private var focusAreas: String
+    @State private var yearsOfExperience: String
+    @State private var handicap: String
+    @State private var golfGoal: String
+    @State private var jobInfo: String
+    @State private var isCapturingPhoto = false
+    @State private var isShowingPhotoOptions = false
+    @State private var isShowingPhotoLibrary = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isAddingPackage = false
     @State private var isAddingLesson = false
     @State private var isAddingVideo = false
     @State private var isCapturingSwingVideo = false
     @State private var videoCaptureError: String?
     @State private var isShowingVideoCaptureError = false
+    @State private var sessionNoteToShare: LessonSessionNote?
+    @State private var isAddingSessionNote = false
+    @State private var sessionNoteDefaultDate: Date = .now
+    @State private var sessionNoteForEditing: LessonSessionNote?
+    @State private var sessionVideoForEditing: LessonVideo?
     @State private var packageToDeduct: LessonPackage?
     @State private var lessonMessageBody = ""
     @State private var isShowingLessonMessageComposer = false
@@ -1294,8 +1273,10 @@ struct StudentDetailView: View {
         _name = State(initialValue: student.name)
         _phoneNumber = State(initialValue: student.phoneNumber)
         _email = State(initialValue: student.email)
-        _historyNotes = State(initialValue: student.historyNotes)
-        _focusAreas = State(initialValue: student.focusAreas)
+        _yearsOfExperience = State(initialValue: student.yearsOfExperience ?? "")
+        _handicap = State(initialValue: student.handicap ?? "")
+        _golfGoal = State(initialValue: student.golfGoal ?? "")
+        _jobInfo = State(initialValue: student.jobInfo ?? "")
     }
 
     var body: some View {
@@ -1313,6 +1294,12 @@ struct StudentDetailView: View {
 
     private var editorSheetsDetailView: some View {
         navigationDetailView
+        .sheet(isPresented: $isCapturingPhoto) {
+            CameraImagePicker { image in
+                savePhoto(image)
+            }
+            .ignoresSafeArea()
+        }
         .sheet(isPresented: $isAddingPackage) {
             AddPackageView(student: student)
         }
@@ -1328,6 +1315,18 @@ struct StudentDetailView: View {
             }
             .ignoresSafeArea()
         }
+        .sheet(item: $sessionNoteToShare) { note in
+            SessionNoteShareView(note: note, studentName: student.name)
+        }
+        .sheet(isPresented: $isAddingSessionNote) {
+            EditSessionNoteView(student: student, defaultDate: sessionNoteDefaultDate)
+        }
+        .sheet(item: $sessionNoteForEditing) { note in
+            EditSessionNoteView(existingNote: note)
+        }
+        .sheet(item: $sessionVideoForEditing) { video in
+            EditVideoView(video: video)
+        }
         .alert("Video Capture Failed", isPresented: $isShowingVideoCaptureError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -1337,13 +1336,12 @@ struct StudentDetailView: View {
 
     private var lessonMessagingDetailView: some View {
         editorSheetsDetailView
-        .confirmationDialog(
+        .alert(
             "Deduct a Lesson",
             isPresented: Binding(
                 get: { packageToDeduct != nil },
                 set: { if !$0 { packageToDeduct = nil } }
             ),
-            titleVisibility: .visible,
             presenting: packageToDeduct
         ) { package in
             Button("Confirm & Text Student") {
@@ -1377,15 +1375,10 @@ struct StudentDetailView: View {
 
     private var packageDeletionDetailView: some View {
         lessonMessagingDetailView
-        .confirmationDialog(
-            "Delete Package",
-            isPresented: $isConfirmingPackageDeletion,
-            titleVisibility: .visible
-        ) {
+        .alert("Delete Package", isPresented: $isConfirmingPackageDeletion) {
             Button("Text Student & Delete", role: .destructive) {
                 preparePackageDeletionMessage()
             }
-
             Button("Cancel", role: .cancel) {
                 packagesPendingDeletion = []
             }
@@ -1420,12 +1413,43 @@ struct StudentDetailView: View {
     private var detailForm: some View {
         Form {
             studentInformationSection
-            notesSection
+            bioSection
             accountSection
             packageSection
             LessonListSection(student: student)
-            videoSection
-            CoachAnalysisVideoSection(student: student, onPlayCoachAnalysis: onPlayCoachAnalysis)
+            LessonSessionsSection(
+                student: student,
+                onCaptureVideo: startVideoCapture,
+                onAddVideo: { isAddingVideo = true },
+                onPlayVideo: onPlayVideo,
+                onPlayCoachAnalysis: onPlayCoachAnalysis,
+                onShareNote: { sessionNoteToShare = $0 },
+                onAddSessionNote: { date in
+                    sessionNoteDefaultDate = date
+                    isAddingSessionNote = true
+                },
+                onEditNote: { sessionNoteForEditing = $0 },
+                onEditVideo: { sessionVideoForEditing = $0 }
+            )
+        }
+        .onChange(of: name) { saveStudentDetails() }
+        .onChange(of: phoneNumber) { saveStudentDetails() }
+        .onChange(of: email) { saveStudentDetails() }
+        .onChange(of: yearsOfExperience) { saveStudentDetails() }
+        .onChange(of: handicap) { saveStudentDetails() }
+        .onChange(of: golfGoal) { saveStudentDetails() }
+        .onChange(of: jobInfo) { saveStudentDetails() }
+        .photosPicker(isPresented: $isShowingPhotoLibrary, selection: $selectedPhotoItem, matching: .images)
+        .onChange(of: selectedPhotoItem) {
+            guard let item = selectedPhotoItem else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    if let image = UIImage(data: data) {
+                        savePhoto(image)
+                    }
+                }
+                selectedPhotoItem = nil
+            }
         }
     }
 
@@ -1442,41 +1466,65 @@ struct StudentDetailView: View {
 
     private var studentInformationSection: some View {
         Section("Student Information") {
+            HStack {
+                Spacer()
+                Button {
+                    isShowingPhotoOptions = true
+                } label: {
+                    if let data = student.photoData, let uiImage = UIImage(data: data) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 90, height: 90)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+                    } else {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 80))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 90, height: 90)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            .confirmationDialog("Student Photo", isPresented: $isShowingPhotoOptions) {
+                Button("Take Photo") { isCapturingPhoto = true }
+                Button("Choose from Library") { isShowingPhotoLibrary = true }
+                if student.photoData != nil {
+                    Button("Remove Photo", role: .destructive) { student.photoData = nil }
+                }
+                Button("Cancel", role: .cancel) { }
+            }
             TextField("Name", text: $name)
-            TextField("Phone", text: $phoneNumber)
-                .keyboardType(.phonePad)
-            TextField("Email", text: $email)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-
-            HStack(spacing: 10) {
+            HStack {
+                TextField("Phone", text: $phoneNumber)
+                    .keyboardType(.phonePad)
                 if let phoneURL {
-                    StudentContactButton(
-                        systemImage: "phone.fill",
-                        text: "Call Student",
-                        tint: StudentDirectoryPalette.fairway
-                    ) {
+                    Button {
                         openURL(phoneURL)
+                    } label: {
+                        Image(systemName: "phone.fill")
+                            .foregroundStyle(StudentDirectoryPalette.fairway)
                     }
+                    .buttonStyle(.borderless)
                 }
-
+            }
+            HStack {
+                TextField("Email", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
                 if let emailURL {
-                    StudentContactButton(
-                        systemImage: "envelope.fill",
-                        text: "Email Student",
-                        tint: StudentDirectoryPalette.sky
-                    ) {
+                    Button {
                         openURL(emailURL)
+                    } label: {
+                        Image(systemName: "envelope.fill")
+                            .foregroundStyle(StudentDirectoryPalette.sky)
                     }
+                    .buttonStyle(.borderless)
                 }
             }
-
-            Button {
-                saveStudentDetails()
-            } label: {
-                Label("Save Student Information", systemImage: "checkmark.circle")
-            }
-            .disabled(!hasUnsavedStudentDetails)
         }
         .listRowBackground(StudentDetailSectionTint.studentInfo)
     }
@@ -1497,19 +1545,27 @@ struct StudentDetailView: View {
         return URL(string: "mailto:\(email)")
     }
 
-    private var notesSection: some View {
-        Section("Notes") {
-            TextField("History", text: $historyNotes, axis: .vertical)
-                .lineLimit(3...8)
-            TextField("Current swing problems and goals", text: $focusAreas, axis: .vertical)
-                .lineLimit(3...8)
-
-            Button {
-                saveStudentDetails()
-            } label: {
-                Label("Save Notes", systemImage: "checkmark.circle")
+    private var bioSection: some View {
+        Section("Student Bio") {
+            LabeledContent("Experience") {
+                TextField("e.g. 3 years", text: $yearsOfExperience)
+                    .multilineTextAlignment(.trailing)
             }
-            .disabled(!hasUnsavedStudentDetails)
+            LabeledContent("Handicap") {
+                TextField("e.g. 14.2", text: $handicap)
+                    .multilineTextAlignment(.trailing)
+            }
+            LabeledContent("Occupation") {
+                TextField("e.g. Engineer", text: $jobInfo)
+                    .multilineTextAlignment(.trailing)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Golf Goal")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                TextField("What does the student want to achieve?", text: $golfGoal, axis: .vertical)
+                    .lineLimit(3...6)
+            }
         }
         .listRowBackground(StudentDetailSectionTint.notes)
     }
@@ -1681,20 +1737,23 @@ struct StudentDetailView: View {
         isShowingUndoStatus = true
     }
 
-    private var hasUnsavedStudentDetails: Bool {
-        name != student.name ||
-        phoneNumber != student.phoneNumber ||
-        email != student.email ||
-        historyNotes != student.historyNotes ||
-        focusAreas != student.focusAreas
-    }
-
     private func saveStudentDetails() {
         student.name = name
         student.phoneNumber = phoneNumber
         student.email = email
-        student.historyNotes = historyNotes
-        student.focusAreas = focusAreas
+        student.yearsOfExperience = yearsOfExperience
+        student.handicap = handicap
+        student.golfGoal = golfGoal
+        student.jobInfo = jobInfo
+    }
+
+    private func savePhoto(_ image: UIImage) {
+        let maxDimension: CGFloat = 512
+        let scale = min(maxDimension / image.size.width, maxDimension / image.size.height, 1.0)
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        student.photoData = resized.jpegData(compressionQuality: 0.8)
     }
 
     private func startVideoCapture() {
@@ -1711,14 +1770,10 @@ struct StudentDetailView: View {
         do {
             let savedURL = try VideoFileStore.copyVideo(from: url)
             let video = LessonVideo(
-                title: "Swing Video",
+                title: "Lesson Video — \(Date.now.formatted(date: .abbreviated, time: .omitted))",
                 recordedAt: .now,
-                notes: "",
                 fileURLString: VideoFileStore.persistedFileName(for: savedURL),
-                lessonDate: .now,
-                focusNotes: student.focusAreas,
-                problemNotes: student.historyNotes,
-                comparisonNotes: "Compare this swing to the previous lesson."
+                lessonDate: .now
             )
             student.videos.append(video)
         } catch {
@@ -1887,8 +1942,8 @@ struct VideoListSection: View {
                     ForEach(group.videos) { video in
                         LessonVideoRow(
                             video: video,
-                            defaultFocusNotes: student.focusAreas,
-                            defaultProblemNotes: student.historyNotes,
+                            defaultFocusNotes: "",
+                            defaultProblemNotes: "",
                             onPlay: { openVideo(video) },
                             onEdit: { selectedVideoForEditing = video }
                         )
@@ -2129,6 +2184,7 @@ struct LessonVideoRow: View {
     let defaultProblemNotes: String
     let onPlay: () -> Void
     let onEdit: () -> Void
+    @State private var isSharing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2162,8 +2218,10 @@ struct LessonVideoRow: View {
             .disabled(video.fileURL == nil)
 
             HStack(spacing: 8) {
-                if let url = video.fileURL {
-                    ShareLink(item: url) {
+                if video.fileURL != nil {
+                    Button {
+                        isSharing = true
+                    } label: {
                         Label("Send", systemImage: "square.and.arrow.up")
                     }
                     .font(.caption)
@@ -2194,6 +2252,28 @@ struct LessonVideoRow: View {
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .sheet(isPresented: $isSharing) {
+            VideoShareView(videoURL: video.fileURL, notesText: notesText)
+        }
+    }
+
+    private var notesText: String {
+        var parts: [String] = []
+        let dateStr = video.recordedAt.formatted(date: .abbreviated, time: .shortened)
+        parts.append("\(video.title) — \(dateStr)")
+        if let focus = firstNonEmpty(video.focusNotes, defaultFocusNotes) {
+            parts.append("Improving:\n\(focus)")
+        }
+        if let problem = firstNonEmpty(video.problemNotes, defaultProblemNotes) {
+            parts.append("Problem Areas:\n\(problem)")
+        }
+        if let comparison = video.comparisonNotes, !comparison.isEmpty {
+            parts.append("Comparison:\n\(comparison)")
+        }
+        if !video.notes.isEmpty {
+            parts.append("Coach Notes:\n\(video.notes)")
+        }
+        return parts.joined(separator: "\n\n")
     }
 
     private func firstNonEmpty(_ values: String?...) -> String? {
@@ -2221,6 +2301,443 @@ struct ProgressNote: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+// MARK: - Lesson Sessions
+
+struct LessonSessionGroup: Identifiable {
+    let date: Date
+    var note: LessonSessionNote?
+    var swingVideos: [LessonVideo]
+    var analysisVideos: [CoachAnalysisVideo]
+    var id: Date { date }
+
+    init(date: Date, note: LessonSessionNote? = nil, swingVideos: [LessonVideo] = [], analysisVideos: [CoachAnalysisVideo] = []) {
+        self.date = date
+        self.note = note
+        self.swingVideos = swingVideos
+        self.analysisVideos = analysisVideos
+    }
+}
+
+struct LessonSessionsSection: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var student: Student
+    let onCaptureVideo: () -> Void
+    let onAddVideo: () -> Void
+    let onPlayVideo: (LessonVideo, Student) -> Void
+    let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
+    let onShareNote: (LessonSessionNote) -> Void
+    let onAddSessionNote: (Date) -> Void
+    let onEditNote: (LessonSessionNote) -> Void
+    let onEditVideo: (LessonVideo) -> Void
+
+    @State private var notePendingDeletion: LessonSessionNote?
+    @State private var videoPendingDeletion: LessonVideo?
+    @State private var analysisPendingDeletion: CoachAnalysisVideo?
+
+    var sessionGroups: [LessonSessionGroup] {
+        var groups: [Date: LessonSessionGroup] = [:]
+        let cal = Calendar.current
+        for video in student.videos {
+            let day = cal.startOfDay(for: video.lessonDate ?? video.recordedAt)
+            if groups[day] == nil { groups[day] = LessonSessionGroup(date: day) }
+            groups[day]!.swingVideos.append(video)
+        }
+        for analysis in student.coachAnalysisVideos {
+            let day = cal.startOfDay(for: analysis.recordedAt)
+            if groups[day] == nil { groups[day] = LessonSessionGroup(date: day) }
+            groups[day]!.analysisVideos.append(analysis)
+        }
+        for note in student.sessionNotes {
+            let day = cal.startOfDay(for: note.sessionDate)
+            if groups[day] == nil { groups[day] = LessonSessionGroup(date: day) }
+            groups[day]!.note = note
+        }
+        return groups.values.sorted { $0.date > $1.date }
+    }
+
+    var body: some View {
+        Group {
+            Section("Lesson Sessions") {
+                Button {
+                    onAddSessionNote(.now)
+                } label: {
+                    Label("Add Lesson Notes", systemImage: "note.text.badge.plus")
+                }
+                Button(action: onCaptureVideo) {
+                    Label("Capture Swing Video", systemImage: "camera")
+                }
+                Button(action: onAddVideo) {
+                    Label("Import / Add Video", systemImage: "video.badge.plus")
+                }
+                if sessionGroups.isEmpty {
+                    Text("No lesson sessions yet")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listRowBackground(StudentDetailSectionTint.videos)
+
+            ForEach(sessionGroups) { group in
+                Section {
+                    if let note = group.note {
+                        ForEach([note]) { n in
+                            SessionNoteCard(note: n) {
+                                onEditNote(n)
+                            } onShare: {
+                                onShareNote(n)
+                            }
+                        }
+                        .onDelete { _ in
+                            notePendingDeletion = note
+                        }
+                    } else {
+                        Button {
+                            onAddSessionNote(group.date)
+                        } label: {
+                            Label("Add Lesson Notes", systemImage: "note.text.badge.plus")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+
+                    ForEach(group.swingVideos.sorted { $0.recordedAt > $1.recordedAt }) { video in
+                        LessonVideoRow(
+                            video: video,
+                            defaultFocusNotes: "",
+                            defaultProblemNotes: "",
+                            onPlay: { onPlayVideo(video, student) },
+                            onEdit: { onEditVideo(video) }
+                        )
+                    }
+                    .onDelete { offsets in
+                        let sorted = group.swingVideos.sorted { $0.recordedAt > $1.recordedAt }
+                        if let i = offsets.first {
+                            videoPendingDeletion = sorted[i]
+                        }
+                    }
+
+                    ForEach(group.analysisVideos.sorted { $0.recordedAt > $1.recordedAt }) { analysis in
+                        SessionAnalysisRow(analysis: analysis) {
+                            onPlayCoachAnalysis(analysis)
+                        }
+                    }
+                    .onDelete { offsets in
+                        let sorted = group.analysisVideos.sorted { $0.recordedAt > $1.recordedAt }
+                        if let i = offsets.first {
+                            analysisPendingDeletion = sorted[i]
+                        }
+                    }
+                } header: {
+                    Text(group.date, format: .dateTime.weekday(.wide).month(.wide).day().year())
+                        .font(.subheadline.weight(.semibold))
+                        .textCase(nil)
+                        .foregroundStyle(.primary)
+                }
+                .listRowBackground(StudentDetailSectionTint.videos)
+            }
+        }
+        .alert("Delete Lesson Notes", isPresented: Binding(
+            get: { notePendingDeletion != nil },
+            set: { if !$0 { notePendingDeletion = nil } }
+        ), presenting: notePendingDeletion) { note in
+            Button("Delete", role: .destructive) {
+                student.sessionNotes.removeAll { $0.persistentModelID == note.persistentModelID }
+                modelContext.delete(note)
+                notePendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                notePendingDeletion = nil
+            }
+        } message: { _ in
+            Text("Are you sure you want to delete these lesson notes? This cannot be undone.")
+        }
+        .alert("Delete Video", isPresented: Binding(
+            get: { videoPendingDeletion != nil },
+            set: { if !$0 { videoPendingDeletion = nil } }
+        ), presenting: videoPendingDeletion) { video in
+            Button("Delete", role: .destructive) {
+                VideoFileStore.deleteStoredVideoFile(for: video)
+                student.videos.removeAll { $0.persistentModelID == video.persistentModelID }
+                modelContext.delete(video)
+                videoPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                videoPendingDeletion = nil
+            }
+        } message: { _ in
+            Text("Are you sure you want to delete this video? This cannot be undone.")
+        }
+        .alert("Delete Coach Analysis Video", isPresented: Binding(
+            get: { analysisPendingDeletion != nil },
+            set: { if !$0 { analysisPendingDeletion = nil } }
+        ), presenting: analysisPendingDeletion) { analysis in
+            Button("Delete", role: .destructive) {
+                if let url = analysis.fileURL { try? FileManager.default.removeItem(at: url) }
+                student.coachAnalysisVideos.removeAll { $0.persistentModelID == analysis.persistentModelID }
+                modelContext.delete(analysis)
+                analysisPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                analysisPendingDeletion = nil
+            }
+        } message: { _ in
+            Text("Are you sure you want to delete this coach analysis video? This cannot be undone.")
+        }
+    }
+}
+
+struct SessionNoteCard: View {
+    let note: LessonSessionNote
+    let onEdit: () -> Void
+    let onShare: () -> Void
+
+    var hasContent: Bool {
+        !note.focus.isEmpty || !note.problems.isEmpty || !note.improvements.isEmpty || !note.generalNotes.isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !hasContent {
+                Text("No notes added yet")
+                    .foregroundStyle(.secondary)
+                    .italic()
+                    .font(.subheadline)
+            } else {
+                if !note.focus.isEmpty { SessionNoteField(label: "Today's Focus", text: note.focus) }
+                if !note.problems.isEmpty { SessionNoteField(label: "Problem Areas", text: note.problems) }
+                if !note.improvements.isEmpty { SessionNoteField(label: "Areas to Improve", text: note.improvements) }
+                if !note.generalNotes.isEmpty { SessionNoteField(label: "Additional Notes", text: note.generalNotes) }
+            }
+
+            HStack(spacing: 16) {
+                Button(action: onEdit) {
+                    Label("Edit Notes", systemImage: "pencil")
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+
+                Button(action: onShare) {
+                    Label("Share Notes", systemImage: "square.and.arrow.up")
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+
+                Spacer()
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct SessionNoteField: View {
+    let label: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SessionAnalysisRow: View {
+    let analysis: CoachAnalysisVideo
+    let onPlay: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.title3)
+                .foregroundStyle(.orange)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(analysis.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(analysis.recordedAt, format: .dateTime.hour().minute())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !analysis.notes.isEmpty {
+                    Text(analysis.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+
+            if analysis.fileURL != nil {
+                Button(action: onPlay) {
+                    Image(systemName: "play.circle")
+                        .font(.title3)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct EditSessionNoteView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    let student: Student?
+    let existingNote: LessonSessionNote?
+
+    @State private var sessionDate: Date
+    @State private var focus: String
+    @State private var problems: String
+    @State private var improvements: String
+    @State private var generalNotes: String
+
+    init(student: Student, defaultDate: Date = .now) {
+        self.student = student
+        self.existingNote = nil
+        _sessionDate = State(initialValue: Calendar.current.startOfDay(for: defaultDate))
+        _focus = State(initialValue: "")
+        _problems = State(initialValue: "")
+        _improvements = State(initialValue: "")
+        _generalNotes = State(initialValue: "")
+    }
+
+    init(existingNote: LessonSessionNote) {
+        self.student = nil
+        self.existingNote = existingNote
+        _sessionDate = State(initialValue: existingNote.sessionDate)
+        _focus = State(initialValue: existingNote.focus)
+        _problems = State(initialValue: existingNote.problems)
+        _improvements = State(initialValue: existingNote.improvements)
+        _generalNotes = State(initialValue: existingNote.generalNotes)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    DatePicker("Lesson Date", selection: $sessionDate, displayedComponents: .date)
+                }
+
+                Section("Today's Focus") {
+                    TextField("What did you work on today?", text: $focus, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Problem Areas") {
+                    TextField("What issues were observed?", text: $problems, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Areas to Improve") {
+                    TextField("Drills or homework for the student", text: $improvements, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Additional Notes") {
+                    TextField("Any other notes...", text: $generalNotes, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+            }
+            .navigationTitle(existingNote == nil ? "New Lesson Notes" : "Edit Lesson Notes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                }
+            }
+        }
+    }
+
+    private func save() {
+        if let note = existingNote {
+            note.sessionDate = sessionDate
+            note.focus = focus
+            note.problems = problems
+            note.improvements = improvements
+            note.generalNotes = generalNotes
+        } else if let student {
+            let note = LessonSessionNote(
+                sessionDate: sessionDate,
+                focus: focus,
+                problems: problems,
+                improvements: improvements,
+                generalNotes: generalNotes
+            )
+            student.sessionNotes.append(note)
+        }
+        dismiss()
+    }
+}
+
+struct SessionNoteShareView: View {
+    let note: LessonSessionNote
+    let studentName: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var isSharing = false
+
+    var formattedText: String {
+        let dateStr = note.sessionDate.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        let greeting = studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Hi" : "Hi \(studentName.trimmingCharacters(in: .whitespacesAndNewlines))"
+        var parts: [String] = [
+            "Golf Lesson Summary — \(dateStr)",
+            "\(greeting), here are your notes from today's lesson."
+        ]
+        if !note.focus.isEmpty { parts.append("TODAY'S FOCUS\n\(note.focus)") }
+        if !note.problems.isEmpty { parts.append("PROBLEM AREAS\n\(note.problems)") }
+        if !note.improvements.isEmpty { parts.append("AREAS TO IMPROVE\n\(note.improvements)") }
+        if !note.generalNotes.isEmpty { parts.append("ADDITIONAL NOTES\n\(note.generalNotes)") }
+        return parts.joined(separator: "\n\n")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    Text(formattedText)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .textSelection(.enabled)
+                }
+
+                Divider()
+
+                Button {
+                    isSharing = true
+                } label: {
+                    Label("Send Notes", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding()
+            }
+            .navigationTitle("Share Lesson Notes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $isSharing) {
+                ShareSheet(activityItems: [formattedText])
+                    .presentationDetents([.medium, .large])
+            }
         }
     }
 }
@@ -2454,38 +2971,21 @@ struct AddLessonView: View {
 struct AddVideoView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var student: Student
-    @State private var title = "Swing Video"
-    @State private var lessonDate: Date
-    @State private var notes = ""
-    @State private var focusNotes: String
-    @State private var problemNotes: String
-    @State private var comparisonNotes = ""
+    @State private var lessonDate = Date.now
     @State private var showCamera = false
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var pendingVideoURL: URL?
     @State private var importError: String?
 
-    init(student: Student) {
-        self.student = student
-        _lessonDate = State(initialValue: .now)
-        _focusNotes = State(initialValue: student.focusAreas)
-        _problemNotes = State(initialValue: student.historyNotes)
+    var autoTitle: String {
+        "Lesson Video — \(lessonDate.formatted(date: .abbreviated, time: .omitted))"
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Lesson") {
-                    TextField("Title", text: $title)
-                    DatePicker("Lesson Date", selection: $lessonDate)
-                    TextField("What the student is improving", text: $focusNotes, axis: .vertical)
-                        .lineLimit(3...8)
-                    TextField("Existing problem", text: $problemNotes, axis: .vertical)
-                        .lineLimit(3...8)
-                    TextField("Comparison to last lesson", text: $comparisonNotes, axis: .vertical)
-                        .lineLimit(3...8)
-                    TextField("Extra analysis notes", text: $notes, axis: .vertical)
-                        .lineLimit(3...8)
+                Section {
+                    DatePicker("Lesson Date", selection: $lessonDate, displayedComponents: .date)
                 }
 
                 Section("Video") {
@@ -2523,14 +3023,10 @@ struct AddVideoView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let video = LessonVideo(
-                            title: title,
+                            title: autoTitle,
                             recordedAt: lessonDate,
-                            notes: notes,
                             fileURLString: pendingVideoURL.map(VideoFileStore.persistedFileName),
-                            lessonDate: lessonDate,
-                            focusNotes: focusNotes,
-                            problemNotes: problemNotes,
-                            comparisonNotes: comparisonNotes
+                            lessonDate: lessonDate
                         )
                         student.videos.append(video)
                         dismiss()
@@ -5209,21 +5705,29 @@ struct StudentBackupRecord: Codable {
     let name: String
     let phoneNumber: String
     let email: String
-    let historyNotes: String
-    let focusAreas: String
+    let yearsOfExperience: String?
+    let handicap: String?
+    let golfGoal: String?
+    let jobInfo: String?
     let createdAt: Date
+    let photoData: Data?
     let packages: [LessonPackageBackupRecord]
     let lessons: [LessonAppointmentBackupRecord]
+    let sessionNotes: [LessonSessionNoteBackupRecord]
 
     init(student: Student) {
         name = student.name
         phoneNumber = student.phoneNumber
         email = student.email
-        historyNotes = student.historyNotes
-        focusAreas = student.focusAreas
+        yearsOfExperience = student.yearsOfExperience
+        handicap = student.handicap
+        golfGoal = student.golfGoal
+        jobInfo = student.jobInfo
         createdAt = student.createdAt
+        photoData = student.photoData
         packages = student.packages.map(LessonPackageBackupRecord.init)
         lessons = student.lessons.map(LessonAppointmentBackupRecord.init)
+        sessionNotes = student.sessionNotes.map(LessonSessionNoteBackupRecord.init)
     }
 
     func makeStudent() -> Student {
@@ -5231,11 +5735,15 @@ struct StudentBackupRecord: Codable {
             name: name,
             phoneNumber: phoneNumber,
             email: email,
-            historyNotes: historyNotes,
-            focusAreas: focusAreas,
+            yearsOfExperience: yearsOfExperience,
+            handicap: handicap,
+            golfGoal: golfGoal,
+            jobInfo: jobInfo,
             createdAt: createdAt,
+            photoData: photoData,
             packages: packages.map { $0.makePackage() },
-            lessons: lessons.map { $0.makeLesson() }
+            lessons: lessons.map { $0.makeLesson() },
+            sessionNotes: sessionNotes.map { $0.makeNote() }
         )
     }
 }
@@ -5294,6 +5802,32 @@ struct LessonAppointmentBackupRecord: Codable {
             notes: notes,
             reminderLeadTime: ReminderLeadTime(rawValue: reminderLeadTimeRawValue) ?? .none,
             isCompleted: isCompleted
+        )
+    }
+}
+
+struct LessonSessionNoteBackupRecord: Codable {
+    let sessionDate: Date
+    let focus: String
+    let problems: String
+    let improvements: String
+    let generalNotes: String
+
+    init(note: LessonSessionNote) {
+        sessionDate = note.sessionDate
+        focus = note.focus
+        problems = note.problems
+        improvements = note.improvements
+        generalNotes = note.generalNotes
+    }
+
+    func makeNote() -> LessonSessionNote {
+        LessonSessionNote(
+            sessionDate: sessionDate,
+            focus: focus,
+            problems: problems,
+            improvements: improvements,
+            generalNotes: generalNotes
         )
     }
 }
@@ -5400,8 +5934,10 @@ enum StudentExporter {
             "Student Name",
             "Phone Number",
             "Email",
-            "History Notes",
-            "Current Problems / Goals",
+            "Years of Experience",
+            "Handicap",
+            "Golf Goal",
+            "Occupation",
             "Lessons Paid For",
             "Lessons Used",
             "Lessons Remaining",
@@ -5424,8 +5960,10 @@ enum StudentExporter {
                 student.name,
                 student.phoneNumber,
                 student.email,
-                student.historyNotes,
-                student.focusAreas,
+                student.yearsOfExperience ?? "",
+                student.handicap ?? "",
+                student.golfGoal ?? "",
+                student.jobInfo ?? "",
                 "\(lessonsPaidFor)",
                 "\(lessonsUsed)",
                 "\(student.remainingLessons)",
@@ -5649,7 +6187,131 @@ enum CurrencyFormatter {
     }
 }
 
+struct CameraImagePicker: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraImagePicker
+        init(_ parent: CameraImagePicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onCapture(image)
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
+struct VideoShareView: View {
+    let videoURL: URL?
+    let notesText: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var isSharingVideo = false
+    @State private var notesCopied = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Text("Copy the notes below, share the video, then paste into your message.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+
+                Divider()
+                    .padding(.top, 12)
+
+                ScrollView {
+                    Text(notesText.isEmpty ? "No notes for this video." : notesText)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .textSelection(.enabled)
+                }
+
+                Divider()
+
+                VStack(spacing: 12) {
+                    Button {
+                        UIPasteboard.general.string = notesText
+                        notesCopied = true
+                    } label: {
+                        Label(
+                            notesCopied ? "Notes Copied!" : "Copy Notes",
+                            systemImage: notesCopied ? "checkmark.circle.fill" : "doc.on.doc"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(notesCopied ? .green : .primary)
+
+                    if videoURL != nil {
+                        Button {
+                            isSharingVideo = true
+                        } label: {
+                            Label("Share Video", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Send to Student")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $isSharingVideo) {
+                if let url = videoURL {
+                    ShareSheet(activityItems: [url])
+                        .presentationDetents([.medium, .large])
+                }
+            }
+        }
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootView = scene.windows.first?.rootViewController?.view {
+            controller.popoverPresentationController?.sourceView = rootView
+            controller.popoverPresentationController?.sourceRect = CGRect(
+                x: rootView.bounds.midX, y: rootView.bounds.midY, width: 0, height: 0
+            )
+            controller.popoverPresentationController?.permittedArrowDirections = []
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 #Preview {
     ContentView()
-        .modelContainer(for: [Student.self, LessonPackage.self, LessonAppointment.self, LessonVideo.self], inMemory: true)
+        .modelContainer(for: [Student.self, LessonPackage.self, LessonAppointment.self, LessonVideo.self, LessonSessionNote.self], inMemory: true)
 }

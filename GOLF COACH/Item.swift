@@ -41,37 +41,49 @@ final class Student {
     var name: String
     var phoneNumber: String
     var email: String
-    var historyNotes: String
-    var focusAreas: String
+    var yearsOfExperience: String?
+    var handicap: String?
+    var golfGoal: String?
+    var jobInfo: String?
     var createdAt: Date
+    var photoData: Data?
 
     @Relationship(deleteRule: .cascade) var packages: [LessonPackage]
     @Relationship(deleteRule: .cascade) var lessons: [LessonAppointment]
     @Relationship(deleteRule: .cascade) var videos: [LessonVideo]
     @Relationship(deleteRule: .cascade) var coachAnalysisVideos: [CoachAnalysisVideo]
+    @Relationship(deleteRule: .cascade) var sessionNotes: [LessonSessionNote]
 
     init(
         name: String = "New Student",
         phoneNumber: String = "",
         email: String = "",
-        historyNotes: String = "",
-        focusAreas: String = "",
+        yearsOfExperience: String? = nil,
+        handicap: String? = nil,
+        golfGoal: String? = nil,
+        jobInfo: String? = nil,
         createdAt: Date = .now,
+        photoData: Data? = nil,
         packages: [LessonPackage] = [],
         lessons: [LessonAppointment] = [],
         videos: [LessonVideo] = [],
-        coachAnalysisVideos: [CoachAnalysisVideo] = []
+        coachAnalysisVideos: [CoachAnalysisVideo] = [],
+        sessionNotes: [LessonSessionNote] = []
     ) {
         self.name = name
         self.phoneNumber = phoneNumber
         self.email = email
-        self.historyNotes = historyNotes
-        self.focusAreas = focusAreas
+        self.yearsOfExperience = yearsOfExperience
+        self.handicap = handicap
+        self.golfGoal = golfGoal
+        self.jobInfo = jobInfo
         self.createdAt = createdAt
+        self.photoData = photoData
         self.packages = packages
         self.lessons = lessons
         self.videos = videos
         self.coachAnalysisVideos = coachAnalysisVideos
+        self.sessionNotes = sessionNotes
     }
 
     var activePackage: LessonPackage? {
@@ -313,5 +325,28 @@ final class LessonVideo {
         try? FileManager.default
             .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
             .appending(path: "GolfCoachVideos", directoryHint: .isDirectory)
+    }
+}
+
+@Model
+final class LessonSessionNote {
+    var sessionDate: Date
+    var focus: String
+    var problems: String
+    var improvements: String
+    var generalNotes: String
+
+    init(
+        sessionDate: Date = .now,
+        focus: String = "",
+        problems: String = "",
+        improvements: String = "",
+        generalNotes: String = ""
+    ) {
+        self.sessionDate = sessionDate
+        self.focus = focus
+        self.problems = problems
+        self.improvements = improvements
+        self.generalNotes = generalNotes
     }
 }
