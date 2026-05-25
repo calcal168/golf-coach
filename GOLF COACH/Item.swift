@@ -41,6 +41,7 @@ final class Student {
     var name: String
     var phoneNumber: String
     var email: String
+    var age: String?
     var yearsOfExperience: String?
     var handicap: String?
     var golfGoal: String?
@@ -58,6 +59,7 @@ final class Student {
         name: String = "New Student",
         phoneNumber: String = "",
         email: String = "",
+        age: String? = nil,
         yearsOfExperience: String? = nil,
         handicap: String? = nil,
         golfGoal: String? = nil,
@@ -73,6 +75,7 @@ final class Student {
         self.name = name
         self.phoneNumber = phoneNumber
         self.email = email
+        self.age = age
         self.yearsOfExperience = yearsOfExperience
         self.handicap = handicap
         self.golfGoal = golfGoal
@@ -88,7 +91,7 @@ final class Student {
 
     var activePackage: LessonPackage? {
         packages
-            .filter { $0.remainingLessons > 0 }
+            .filter { $0.remainingValue > 0 }
             .sorted { $0.purchaseDate > $1.purchaseDate }
             .first
     }
@@ -181,19 +184,22 @@ final class LessonPackage {
     var lessonsUsed: Int
     var totalPaid: Decimal
     var purchaseDate: Date
+    @Relationship(deleteRule: .cascade) var charges: [LessonCharge]
 
     init(
         packageType: LessonPackageType = .fiveLesson,
         lessonsPurchased: Int = 5,
         lessonsUsed: Int = 0,
         totalPaid: Decimal = 0,
-        purchaseDate: Date = .now
+        purchaseDate: Date = .now,
+        charges: [LessonCharge] = []
     ) {
         self.packageTypeRawValue = packageType.rawValue
         self.lessonsPurchased = lessonsPurchased
         self.lessonsUsed = lessonsUsed
         self.totalPaid = totalPaid
         self.purchaseDate = purchaseDate
+        self.charges = charges
     }
 
     var packageType: LessonPackageType {
@@ -211,11 +217,37 @@ final class LessonPackage {
     }
 
     var amountDeducted: Decimal {
-        amountPerLesson * Decimal(lessonsUsed)
+        let legacyLessonCount = max(lessonsUsed - charges.count, 0)
+        let legacyAmount = amountPerLesson * Decimal(legacyLessonCount)
+        let recordedAmount = charges.reduce(Decimal.zero) { $0 + $1.amount }
+        return legacyAmount + recordedAmount
     }
 
     var remainingValue: Decimal {
         max(totalPaid - amountDeducted, 0)
+    }
+}
+
+@Model
+final class LessonCharge {
+    var chargedAt: Date
+    var durationMinutes: Int
+    var participantCount: Int
+    var amount: Decimal
+    var notes: String
+
+    init(
+        chargedAt: Date = .now,
+        durationMinutes: Int = 60,
+        participantCount: Int = 1,
+        amount: Decimal = 0,
+        notes: String = ""
+    ) {
+        self.chargedAt = chargedAt
+        self.durationMinutes = durationMinutes
+        self.participantCount = participantCount
+        self.amount = amount
+        self.notes = notes
     }
 }
 

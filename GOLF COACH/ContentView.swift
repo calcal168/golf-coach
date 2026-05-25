@@ -23,6 +23,8 @@ import UIKit
 private enum AppLanguage: String, CaseIterable {
     case english = "en"
     case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+    case korean = "ko"
 
     var locale: Locale {
         Locale(identifier: rawValue)
@@ -34,6 +36,10 @@ private enum AppLanguage: String, CaseIterable {
             return "English"
         case .simplifiedChinese:
             return "Simplified Chinese"
+        case .traditionalChinese:
+            return "Traditional Chinese"
+        case .korean:
+            return "Korean"
         }
     }
 }
@@ -41,6 +47,7 @@ private enum AppLanguage: String, CaseIterable {
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("selectedAppLanguage") private var selectedAppLanguage = AppLanguage.english.rawValue
+    @AppStorage("prefersDarkMode") private var prefersDarkMode = false
     @State private var selectedVideo: VideoPlaybackSelection?
     @State private var selectedCoachAnalysis: CoachAnalysisPlaybackSelection?
     @State private var isPreparingVideo = false
@@ -80,6 +87,7 @@ struct ContentView: View {
             \.locale,
             AppLanguage(rawValue: selectedAppLanguage)?.locale ?? AppLanguage.english.locale
         )
+        .preferredColorScheme(prefersDarkMode ? .dark : .light)
     }
 
     private var applicationContent: some View {
@@ -205,7 +213,7 @@ private struct AppLockView: View {
                     .font(.system(size: 36, weight: .semibold))
                     .foregroundStyle(StudentDirectoryPalette.primary)
                     .frame(width: 72, height: 72)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(StudentDirectoryPalette.iconBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(spacing: 8) {
                     Text("Golf Coach Locked")
@@ -288,6 +296,7 @@ struct StudentDirectoryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("selectedAppLanguage") private var selectedAppLanguage = AppLanguage.english.rawValue
+    @AppStorage("prefersDarkMode") private var prefersDarkMode = false
     @Query(sort: \Student.name) private var students: [Student]
     let onPlayVideo: (LessonVideo, Student) -> Void
     let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
@@ -440,6 +449,17 @@ struct StudentDirectoryView: View {
                         .disabled(!hasAutomaticBackup)
                     } label: {
                         Label("Data", systemImage: "externaldrive")
+                    }
+                }
+
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        prefersDarkMode.toggle()
+                    } label: {
+                        Label(
+                            prefersDarkMode ? "Light Mode" : "Dark Mode",
+                            systemImage: prefersDarkMode ? "sun.max.fill" : "moon.fill"
+                        )
                     }
                 }
 
@@ -668,22 +688,54 @@ struct StudentDirectoryView: View {
 }
 
 private enum StudentDirectoryPalette {
+    private static func adaptiveColor(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
+
     static let pageBackground = LinearGradient(
         colors: [
-            Color(red: 0.94, green: 0.97, blue: 0.96),
-            Color(red: 0.91, green: 0.94, blue: 0.98)
+            adaptiveColor(
+                light: UIColor(red: 0.94, green: 0.97, blue: 0.96, alpha: 1),
+                dark: UIColor(red: 0.07, green: 0.10, blue: 0.10, alpha: 1)
+            ),
+            adaptiveColor(
+                light: UIColor(red: 0.91, green: 0.94, blue: 0.98, alpha: 1),
+                dark: UIColor(red: 0.07, green: 0.09, blue: 0.14, alpha: 1)
+            )
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-    static let primary = Color(red: 0.08, green: 0.16, blue: 0.23)
-    static let secondary = Color(red: 0.34, green: 0.43, blue: 0.50)
-    static let fairway = Color(red: 0.10, green: 0.42, blue: 0.30)
-    static let gold = Color(red: 0.72, green: 0.52, blue: 0.18)
-    static let brandGreen = Color(red: 0.03, green: 0.29, blue: 0.20)
+    static let primary = adaptiveColor(
+        light: UIColor(red: 0.08, green: 0.16, blue: 0.23, alpha: 1),
+        dark: UIColor(red: 0.90, green: 0.94, blue: 0.97, alpha: 1)
+    )
+    static let secondary = adaptiveColor(
+        light: UIColor(red: 0.34, green: 0.43, blue: 0.50, alpha: 1),
+        dark: UIColor(red: 0.67, green: 0.74, blue: 0.80, alpha: 1)
+    )
+    static let fairway = adaptiveColor(
+        light: UIColor(red: 0.10, green: 0.42, blue: 0.30, alpha: 1),
+        dark: UIColor(red: 0.34, green: 0.79, blue: 0.58, alpha: 1)
+    )
+    static let gold = adaptiveColor(
+        light: UIColor(red: 0.72, green: 0.52, blue: 0.18, alpha: 1),
+        dark: UIColor(red: 0.93, green: 0.72, blue: 0.34, alpha: 1)
+    )
+    static let brandGreen = adaptiveColor(
+        light: UIColor(red: 0.03, green: 0.29, blue: 0.20, alpha: 1),
+        dark: UIColor(red: 0.38, green: 0.84, blue: 0.65, alpha: 1)
+    )
     static let brandGold = Color(red: 0.72, green: 0.57, blue: 0.26)
-    static let sky = Color(red: 0.15, green: 0.38, blue: 0.58)
-    static let rowBackground = Color.white.opacity(0.86)
+    static let sky = adaptiveColor(
+        light: UIColor(red: 0.15, green: 0.38, blue: 0.58, alpha: 1),
+        dark: UIColor(red: 0.35, green: 0.68, blue: 0.93, alpha: 1)
+    )
+    static let rowBackground = Color(uiColor: .secondarySystemBackground).opacity(0.86)
+    static let cardStroke = Color(uiColor: .separator).opacity(0.25)
+    static let iconBackground = Color(uiColor: .secondarySystemBackground)
 }
 
 struct StudentDirectoryEmptyState: View {
@@ -722,11 +774,11 @@ struct StudentDirectoryOverview: View {
     let totalStudentCount: Int
 
     private var activeStudents: Int {
-        students.filter { $0.remainingLessons > 0 }.count
+        students.filter { $0.remainingValue > 0 }.count
     }
 
-    private var totalRemainingLessons: Int {
-        students.reduce(0) { $0 + $1.remainingLessons }
+    private var totalRemainingCredit: Decimal {
+        students.reduce(Decimal.zero) { $0 + $1.remainingValue }
     }
 
     private var totalVideos: Int {
@@ -768,7 +820,7 @@ struct StudentDirectoryOverview: View {
             HStack(spacing: 8) {
                 StudentDirectoryMetric(title: "Students", value: "\(students.count)", tint: StudentDirectoryPalette.sky)
                 StudentDirectoryMetric(title: "Active", value: "\(activeStudents)", tint: StudentDirectoryPalette.fairway)
-                StudentDirectoryMetric(title: "Lessons", value: "\(totalRemainingLessons)", tint: StudentDirectoryPalette.gold)
+                StudentDirectoryMetric(title: "Credit", value: CurrencyFormatter.string(from: totalRemainingCredit), tint: StudentDirectoryPalette.gold)
                 StudentDirectoryMetric(title: "Videos", value: "\(totalVideos)", tint: StudentDirectoryPalette.primary)
             }
         }
@@ -776,7 +828,7 @@ struct StudentDirectoryOverview: View {
         .background(StudentDirectoryPalette.rowBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.65), lineWidth: 1)
+                .stroke(StudentDirectoryPalette.cardStroke, lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 5)
     }
@@ -858,7 +910,7 @@ struct StudentRow: View {
     }
 
     private var remainingTint: Color {
-        student.remainingLessons > 0 ? StudentDirectoryPalette.fairway : StudentDirectoryPalette.secondary
+        student.remainingValue > 0 ? StudentDirectoryPalette.fairway : StudentDirectoryPalette.secondary
     }
 
     var body: some View {
@@ -882,9 +934,9 @@ struct StudentRow: View {
                     Spacer()
 
                     HStack(spacing: 5) {
-                        Image(systemName: student.remainingLessons > 0 ? "checkmark.seal.fill" : "exclamationmark.circle")
+                        Image(systemName: student.remainingValue > 0 ? "checkmark.seal.fill" : "exclamationmark.circle")
                             .font(.caption2.weight(.semibold))
-                        Text("\(student.remainingLessons) left")
+                        Text("\(CurrencyFormatter.string(from: student.remainingValue)) balance")
                             .font(.caption.weight(.bold))
                             .monospacedDigit()
                     }
@@ -916,7 +968,7 @@ struct StudentRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isHighlighted ? StudentDirectoryPalette.sky.opacity(0.35) : Color.white.opacity(0.62), lineWidth: 1)
+                .stroke(isHighlighted ? StudentDirectoryPalette.sky.opacity(0.35) : StudentDirectoryPalette.cardStroke, lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
         .animation(.easeInOut(duration: 0.12), value: isHighlighted)
@@ -1196,13 +1248,13 @@ struct StudentExportView: View {
 }
 
 private enum StudentUndoAction {
-    case lessonDeduction(LessonPackage)
+    case lessonCharge(LessonPackage, LessonCharge)
     case packageDeletion([LessonPackage])
 
     var buttonTitle: String {
         switch self {
-        case .lessonDeduction:
-            return "Undo Lesson Deduction"
+        case .lessonCharge:
+            return "Undo Session Charge"
         case .packageDeletion:
             return "Undo Package Delete"
         }
@@ -1227,6 +1279,7 @@ struct StudentDetailView: View {
     @State private var name: String
     @State private var phoneNumber: String
     @State private var email: String
+    @State private var age: String
     @State private var yearsOfExperience: String
     @State private var handicap: String
     @State private var golfGoal: String
@@ -1274,6 +1327,7 @@ struct StudentDetailView: View {
         _name = State(initialValue: student.name)
         _phoneNumber = State(initialValue: student.phoneNumber)
         _email = State(initialValue: student.email)
+        _age = State(initialValue: student.age ?? "")
         _yearsOfExperience = State(initialValue: student.yearsOfExperience ?? "")
         _handicap = State(initialValue: student.handicap ?? "")
         _golfGoal = State(initialValue: student.golfGoal ?? "")
@@ -1340,23 +1394,10 @@ struct StudentDetailView: View {
 
     private var lessonMessagingDetailView: some View {
         editorSheetsDetailView
-        .alert(
-            "Deduct a Lesson",
-            isPresented: Binding(
-                get: { packageToDeduct != nil },
-                set: { if !$0 { packageToDeduct = nil } }
-            ),
-            presenting: packageToDeduct
-        ) { package in
-            Button("Confirm & Text Student") {
-                deductLesson(from: package)
+        .sheet(item: $packageToDeduct) { package in
+            LogSessionChargeView(package: package) { charge in
+                recordSessionCharge(charge, from: package)
             }
-            Button("Cancel", role: .cancel) {
-                packageToDeduct = nil
-            }
-        } message: { package in
-            let remainingAfter = max(student.remainingLessons - 1, 0)
-            Text("Mark one lesson used? \(remainingAfter) total lesson(s) will remain across all packages. \(student.name) will receive a text message confirming this.")
         }
         .sheet(isPresented: $isShowingLessonMessageComposer) {
             MessageComposerView(
@@ -1440,6 +1481,7 @@ struct StudentDetailView: View {
         .onChange(of: name) { saveStudentDetails() }
         .onChange(of: phoneNumber) { saveStudentDetails() }
         .onChange(of: email) { saveStudentDetails() }
+        .onChange(of: age) { saveStudentDetails() }
         .onChange(of: yearsOfExperience) { saveStudentDetails() }
         .onChange(of: handicap) { saveStudentDetails() }
         .onChange(of: golfGoal) { saveStudentDetails() }
@@ -1530,6 +1572,11 @@ struct StudentDetailView: View {
                     .buttonStyle(.borderless)
                 }
             }
+            LabeledContent("Age") {
+                TextField("e.g. 18", text: $age)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+            }
         }
         .listRowBackground(StudentDetailSectionTint.studentInfo)
     }
@@ -1577,7 +1624,7 @@ struct StudentDetailView: View {
 
     private var accountSection: some View {
         Section("Account") {
-            LabeledContent("Lessons Remaining", value: "\(student.remainingLessons)")
+            LabeledContent("Remaining Credit", value: CurrencyFormatter.string(from: student.remainingValue))
             LabeledContent("Total Paid", value: CurrencyFormatter.string(from: student.totalPaid))
             if let activePackage = student.activePackage {
                 LabeledContent("Active Package", value: activePackage.packageType.rawValue)
@@ -1593,6 +1640,12 @@ struct StudentDetailView: View {
                 isAddingLesson = true
             } label: {
                 Label("Schedule Lesson", systemImage: "calendar.badge.plus")
+            }
+
+            Button {
+                prepareAccountStatementText()
+            } label: {
+                Label("Text Account Statement", systemImage: "message")
             }
 
             if let lastUndoAction {
@@ -1627,38 +1680,50 @@ struct StudentDetailView: View {
         )
     }
 
-    private func deductLesson(from package: LessonPackage) {
-        guard package.remainingLessons > 0 else { return }
+    private func recordSessionCharge(_ charge: LessonCharge, from package: LessonPackage) {
+        guard charge.amount > 0, charge.amount <= package.remainingValue else { return }
+        package.charges.append(charge)
         package.lessonsUsed += 1
-        lastUndoAction = .lessonDeduction(package)
+        lastUndoAction = .lessonCharge(package, charge)
         packageToDeduct = nil
 
-        lessonMessageBody = "\(student.lessonBalanceTextMessage) Your lesson today is logged."
+        prepareAccountStatementText(latestCharge: charge)
+    }
+
+    private func prepareAccountStatementText(latestCharge: LessonCharge? = nil) {
+        lessonMessageBody = StudentAccountStatementFormatter.message(for: student, latestCharge: latestCharge)
 
         if student.phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty {
-            lessonStatusMessage = "Lesson deducted, but \(student.name) has no phone number on file."
+            lessonStatusMessage = "Unable to prepare account statement because \(student.name) has no phone number on file."
             isShowingLessonStatus = true
             return
         }
 
         guard MFMessageComposeViewController.canSendText() else {
-            lessonStatusMessage = "Lesson deducted, but this device cannot send text messages. Try on a physical iPhone."
+            lessonStatusMessage = "This device cannot send text messages. Try on a physical iPhone."
             isShowingLessonStatus = true
             return
         }
 
-        isShowingLessonMessageComposer = true
+        if latestCharge != nil {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                isShowingLessonMessageComposer = true
+            }
+        } else {
+            isShowingLessonMessageComposer = true
+        }
     }
 
-    private var remainingLessonsAfterPendingPackageDeletion: Int {
-        let deletedLessons = packagesPendingDeletion.reduce(0) { $0 + $1.remainingLessons }
-        return max(student.remainingLessons - deletedLessons, 0)
+    private var remainingCreditAfterPendingPackageDeletion: Decimal {
+        let deletedCredit = packagesPendingDeletion.reduce(Decimal.zero) { $0 + $1.remainingValue }
+        return max(student.remainingValue - deletedCredit, 0)
     }
 
     private var packageDeletionConfirmationMessage: String {
         let count = packagesPendingDeletion.count
         let packageWord = count == 1 ? "package" : "packages"
-        return "Send \(student.name) a text message first, then delete \(count) \(packageWord)? \(remainingLessonsAfterPendingPackageDeletion) total lesson(s) will remain."
+        return "Send \(student.name) a text message first, then delete \(count) \(packageWord)? \(CurrencyFormatter.string(from: remainingCreditAfterPendingPackageDeletion)) credit will remain."
     }
 
     private func stagePackagesForDeletion(_ packages: [LessonPackage]) {
@@ -1669,7 +1734,7 @@ struct StudentDetailView: View {
     private func preparePackageDeletionMessage() {
         let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         packageDeletionMessageRecipients = [phoneNumber]
-        packageDeletionMessageBody = "\(student.lessonBalanceTextMessage(remainingLessons: remainingLessonsAfterPendingPackageDeletion)) A package will be removed from your account."
+        packageDeletionMessageBody = "Hi \(student.name), a package will be removed from your account. Your remaining credit is \(CurrencyFormatter.string(from: remainingCreditAfterPendingPackageDeletion))."
 
         guard !phoneNumber.isEmpty else {
             packagesPendingDeletion = []
@@ -1722,20 +1787,21 @@ struct StudentDetailView: View {
         guard let lastUndoAction else { return }
 
         switch lastUndoAction {
-        case .lessonDeduction(let package):
-            guard package.lessonsUsed > 0 else {
-                undoStatusMessage = "The lesson deduction could not be reversed because the package no longer has a deducted lesson."
+        case .lessonCharge(let package, let charge):
+            guard package.charges.contains(where: { $0.persistentModelID == charge.persistentModelID }) else {
+                undoStatusMessage = "The session charge could not be reversed because it is no longer recorded."
                 isShowingUndoStatus = true
                 return
             }
-            package.lessonsUsed -= 1
-            undoStatusMessage = "Lesson deduction reversed. \(student.name) now has \(student.remainingLessons) total lesson(s) remaining."
+            package.charges.removeAll { $0.persistentModelID == charge.persistentModelID }
+            package.lessonsUsed = max(package.lessonsUsed - 1, 0)
+            undoStatusMessage = "Session charge reversed. \(student.name) now has \(CurrencyFormatter.string(from: student.remainingValue)) remaining."
 
         case .packageDeletion(let packages):
             for package in packages where !student.packages.contains(where: { $0.persistentModelID == package.persistentModelID }) {
                 student.packages.append(package)
             }
-            undoStatusMessage = "Package delete reversed. \(student.name) now has \(student.remainingLessons) total lesson(s) remaining."
+            undoStatusMessage = "Package delete reversed. \(student.name) now has \(CurrencyFormatter.string(from: student.remainingValue)) remaining."
         }
 
         self.lastUndoAction = nil
@@ -1746,6 +1812,7 @@ struct StudentDetailView: View {
         student.name = name
         student.phoneNumber = phoneNumber
         student.email = email
+        student.age = age
         student.yearsOfExperience = yearsOfExperience
         student.handicap = handicap
         student.golfGoal = golfGoal
@@ -1809,11 +1876,14 @@ struct PackageListSection: View {
                             Text(package.packageType.rawValue)
                                 .font(.headline)
                             Spacer()
-                            Text("\(package.remainingLessons)/\(package.lessonsPurchased) left")
+                            Text("Balance: \(CurrencyFormatter.string(from: package.remainingValue))")
                                 .font(.subheadline.weight(.semibold))
                         }
 
-                        ProgressView(value: Double(package.lessonsUsed), total: Double(max(package.lessonsPurchased, 1)))
+                        ProgressView(
+                            value: NSDecimalNumber(decimal: package.amountDeducted).doubleValue,
+                            total: max(NSDecimalNumber(decimal: package.totalPaid).doubleValue, 1)
+                        )
 
                         HStack {
                             Text("Paid \(CurrencyFormatter.string(from: package.totalPaid))")
@@ -1823,12 +1893,26 @@ struct PackageListSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                        if !package.charges.isEmpty {
+                            ForEach(package.charges.sorted { $0.chargedAt > $1.chargedAt }.prefix(3)) { charge in
+                                HStack {
+                                    Text(charge.chargedAt, format: .dateTime.month().day())
+                                    Text("\(charge.durationMinutes) min")
+                                    Text("\(charge.participantCount) player(s)")
+                                    Spacer()
+                                    Text(CurrencyFormatter.string(from: charge.amount))
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+
                         Button {
                             onRequestDeduct(package)
                         } label: {
-                            Label("Deduct Lesson", systemImage: "minus.circle")
+                            Label("Record Session Charge", systemImage: "minus.circle")
                         }
-                        .disabled(package.remainingLessons == 0)
+                        .disabled(package.remainingValue <= 0)
                     }
                     .padding(.vertical, 6)
                 }
@@ -1838,6 +1922,80 @@ struct PackageListSection: View {
             }
         }
         .listRowBackground(StudentDetailSectionTint.packages)
+    }
+}
+
+struct LogSessionChargeView: View {
+    @Environment(\.dismiss) private var dismiss
+    let package: LessonPackage
+    let onSave: (LessonCharge) -> Void
+    @State private var chargedAt = Date.now
+    @State private var durationMinutes = 60
+    @State private var participantCount = 1
+    @State private var amount = 0.0
+    @State private var notes = ""
+
+    private var decimalAmount: Decimal {
+        Decimal(amount)
+    }
+
+    private var isValidAmount: Bool {
+        decimalAmount > 0 && decimalAmount <= package.remainingValue
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Session Details") {
+                    DatePicker("Lesson Date", selection: $chargedAt, displayedComponents: .date)
+                    Stepper("Duration: \(durationMinutes) min", value: $durationMinutes, in: 15...240, step: 15)
+                    Stepper("Players: \(participantCount)", value: $participantCount, in: 1...12)
+                    TextField(
+                        "Charge Amount",
+                        value: $amount,
+                        format: .currency(code: Locale.current.currency?.identifier ?? "USD")
+                    )
+                    .keyboardType(.decimalPad)
+                    TextField("Charge notes", text: $notes, axis: .vertical)
+                        .lineLimit(2...5)
+                }
+
+                Section("Package Balance") {
+                    LabeledContent("Available Credit", value: CurrencyFormatter.string(from: package.remainingValue))
+                    if amount > 0 {
+                        LabeledContent(
+                            "Balance After Charge",
+                            value: CurrencyFormatter.string(from: max(package.remainingValue - decimalAmount, 0))
+                        )
+                    }
+                    if amount > 0 && !isValidAmount {
+                        Text("The charge must be greater than zero and cannot exceed the available credit.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Record Session Charge")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let charge = LessonCharge(
+                            chargedAt: chargedAt,
+                            durationMinutes: durationMinutes,
+                            participantCount: participantCount,
+                            amount: decimalAmount,
+                            notes: notes
+                        )
+                        onSave(charge)
+                        dismiss()
+                    }
+                    .disabled(!isValidAmount)
+                }
+            }
+        }
     }
 }
 
@@ -3038,7 +3196,7 @@ struct AddPackageView: View {
 
         let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         messageRecipients = [phoneNumber]
-        messageBody = "\(student.lessonBalanceTextMessage) Your payment has been recorded."
+        messageBody = StudentAccountStatementFormatter.message(for: student)
 
         guard !phoneNumber.isEmpty else {
             saveStatusMessage = "Payment saved, but \(student.name) has no phone number on file."
@@ -3235,6 +3393,13 @@ struct PaymentsView: View {
     @Query(sort: \Student.name) private var students: [Student]
     @State private var studentForPackage: Student?
     @State private var studentForLesson: Student?
+    @State private var studentForCharge: Student?
+    @State private var packageForCharge: LessonPackage?
+    @State private var chargeMessageBody = ""
+    @State private var chargeMessageRecipients: [String] = []
+    @State private var isShowingChargeMessageComposer = false
+    @State private var chargeStatusMessage: String?
+    @State private var isShowingChargeStatus = false
 
     var body: some View {
         NavigationStack {
@@ -3252,7 +3417,7 @@ struct PaymentsView: View {
                                 Text(student.name)
                                     .font(.headline)
                                 Spacer()
-                                Text("\(student.remainingLessons) lessons")
+                                Text(CurrencyFormatter.string(from: student.remainingValue))
                                     .font(.subheadline.weight(.semibold))
                             }
 
@@ -3280,6 +3445,16 @@ struct PaymentsView: View {
                                 }
                             }
                             .font(.caption.weight(.semibold))
+
+                            if let package = student.activePackage {
+                                Button {
+                                    studentForCharge = student
+                                    packageForCharge = package
+                                } label: {
+                                    Label("Record Session Charge", systemImage: "minus.circle")
+                                }
+                                .font(.caption.weight(.semibold))
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -3292,6 +3467,57 @@ struct PaymentsView: View {
             .sheet(item: $studentForLesson) { student in
                 AddLessonView(student: student)
             }
+            .sheet(item: $packageForCharge, onDismiss: {
+                studentForCharge = nil
+            }) { package in
+                LogSessionChargeView(package: package) { charge in
+                    package.charges.append(charge)
+                    package.lessonsUsed += 1
+                    prepareChargeMessage(for: charge)
+                }
+            }
+            .sheet(isPresented: $isShowingChargeMessageComposer) {
+                MessageComposerView(
+                    recipients: chargeMessageRecipients,
+                    body: chargeMessageBody,
+                    onFinish: { resultMessage in
+                        if let resultMessage {
+                            chargeStatusMessage = resultMessage
+                            isShowingChargeStatus = true
+                        }
+                    }
+                )
+            }
+            .alert("Lesson Update", isPresented: $isShowingChargeStatus, presenting: chargeStatusMessage) { _ in
+                Button("OK", role: .cancel) { }
+            } message: { message in
+                Text(message)
+            }
+        }
+    }
+
+    private func prepareChargeMessage(for charge: LessonCharge) {
+        guard let student = studentForCharge else { return }
+        chargeMessageBody = StudentAccountStatementFormatter.message(
+            for: student,
+            latestCharge: charge
+        )
+        let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phoneNumber.isEmpty else {
+            chargeStatusMessage = "Session charge saved, but \(student.name) has no phone number on file."
+            isShowingChargeStatus = true
+            return
+        }
+        guard MFMessageComposeViewController.canSendText() else {
+            chargeStatusMessage = "Session charge saved, but this device cannot send text messages. Try on a physical iPhone."
+            isShowingChargeStatus = true
+            return
+        }
+
+        chargeMessageRecipients = [phoneNumber]
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            isShowingChargeMessageComposer = true
         }
     }
 }
@@ -5846,6 +6072,7 @@ struct StudentBackupRecord: Codable {
     let name: String
     let phoneNumber: String
     let email: String
+    let age: String?
     let yearsOfExperience: String?
     let handicap: String?
     let golfGoal: String?
@@ -5860,6 +6087,7 @@ struct StudentBackupRecord: Codable {
         name = student.name
         phoneNumber = student.phoneNumber
         email = student.email
+        age = student.age
         yearsOfExperience = student.yearsOfExperience
         handicap = student.handicap
         golfGoal = student.golfGoal
@@ -5876,6 +6104,7 @@ struct StudentBackupRecord: Codable {
             name: name,
             phoneNumber: phoneNumber,
             email: email,
+            age: age,
             yearsOfExperience: yearsOfExperience,
             handicap: handicap,
             golfGoal: golfGoal,
@@ -5895,6 +6124,7 @@ struct LessonPackageBackupRecord: Codable {
     let lessonsUsed: Int
     let totalPaid: Decimal
     let purchaseDate: Date
+    let charges: [LessonChargeBackupRecord]?
 
     init(package: LessonPackage) {
         packageTypeRawValue = package.packageTypeRawValue
@@ -5902,6 +6132,7 @@ struct LessonPackageBackupRecord: Codable {
         lessonsUsed = package.lessonsUsed
         totalPaid = package.totalPaid
         purchaseDate = package.purchaseDate
+        charges = package.charges.map(LessonChargeBackupRecord.init)
     }
 
     func makePackage() -> LessonPackage {
@@ -5910,7 +6141,34 @@ struct LessonPackageBackupRecord: Codable {
             lessonsPurchased: lessonsPurchased,
             lessonsUsed: lessonsUsed,
             totalPaid: totalPaid,
-            purchaseDate: purchaseDate
+            purchaseDate: purchaseDate,
+            charges: charges?.map { $0.makeCharge() } ?? []
+        )
+    }
+}
+
+struct LessonChargeBackupRecord: Codable {
+    let chargedAt: Date
+    let durationMinutes: Int
+    let participantCount: Int
+    let amount: Decimal
+    let notes: String
+
+    init(charge: LessonCharge) {
+        chargedAt = charge.chargedAt
+        durationMinutes = charge.durationMinutes
+        participantCount = charge.participantCount
+        amount = charge.amount
+        notes = charge.notes
+    }
+
+    func makeCharge() -> LessonCharge {
+        LessonCharge(
+            chargedAt: chargedAt,
+            durationMinutes: durationMinutes,
+            participantCount: participantCount,
+            amount: amount,
+            notes: notes
         )
     }
 }
@@ -6075,13 +6333,14 @@ enum StudentExporter {
             "Student Name",
             "Phone Number",
             "Email",
+            "Age",
             "Years of Experience",
             "Handicap",
             "Golf Goal",
             "Occupation",
             "Lessons Paid For",
-            "Lessons Used",
-            "Lessons Remaining",
+            "Sessions Charged",
+            "Package Lesson Slots Remaining (Reference)",
             "Total Money Paid",
             "Amount Deducted",
             "Remaining Value",
@@ -6101,6 +6360,7 @@ enum StudentExporter {
                 student.name,
                 student.phoneNumber,
                 student.email,
+                student.age ?? "",
                 student.yearsOfExperience ?? "",
                 student.handicap ?? "",
                 student.golfGoal ?? "",
@@ -6328,6 +6588,66 @@ enum CurrencyFormatter {
     }
 }
 
+enum StudentAccountStatementFormatter {
+    static func message(for student: Student, latestCharge: LessonCharge? = nil) -> String {
+        let studentName = student.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let greeting = studentName.isEmpty ? "Hello" : "Hi \(studentName)"
+        var lines = [
+            "\(greeting), your Golf Coach account has been updated.",
+            "",
+            "Account statement"
+        ]
+
+        if let latestCharge {
+            lines.append(
+                "New charge: \(chargeLine(for: latestCharge))"
+            )
+            lines.append("")
+        }
+
+        for package in student.packages.sorted(by: { $0.purchaseDate < $1.purchaseDate }) {
+            lines.append(
+                "\(package.packageType.rawValue) - Paid \(CurrencyFormatter.string(from: package.totalPaid))"
+            )
+
+            let sortedCharges = package.charges.sorted { $0.chargedAt < $1.chargedAt }
+            if sortedCharges.isEmpty {
+                if package.lessonsUsed > 0 {
+                    lines.append(
+                        "- Earlier lesson charges: \(CurrencyFormatter.string(from: package.amountDeducted))"
+                    )
+                } else {
+                    lines.append("- No session charges recorded")
+                }
+            } else {
+                for charge in sortedCharges {
+                    lines.append("- \(chargeLine(for: charge))")
+                    let notes = charge.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !notes.isEmpty {
+                        lines.append("  Note: \(notes)")
+                    }
+                }
+            }
+            lines.append("  Package balance: \(CurrencyFormatter.string(from: package.remainingValue))")
+            lines.append("")
+        }
+
+        let totalCharged = student.packages.reduce(Decimal.zero) { $0 + $1.amountDeducted }
+        lines.append("Total paid: \(CurrencyFormatter.string(from: student.totalPaid))")
+        lines.append("Total charged: \(CurrencyFormatter.string(from: totalCharged))")
+        lines.append("Remaining credit: \(CurrencyFormatter.string(from: student.remainingValue))")
+        return lines.joined(separator: "\n")
+    }
+
+    private static func chargeLine(for charge: LessonCharge) -> String {
+        let date = charge.chargedAt.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .omitted)
+        )
+        let playerLabel = charge.participantCount == 1 ? "player" : "players"
+        return "\(date): \(charge.durationMinutes) min, \(charge.participantCount) \(playerLabel) - \(CurrencyFormatter.string(from: charge.amount))"
+    }
+}
+
 struct CameraImagePicker: UIViewControllerRepresentable {
     let onCapture: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -6454,5 +6774,5 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Student.self, LessonPackage.self, LessonAppointment.self, LessonVideo.self, LessonSessionNote.self], inMemory: true)
+        .modelContainer(for: [Student.self, LessonPackage.self, LessonCharge.self, LessonAppointment.self, LessonVideo.self, LessonSessionNote.self], inMemory: true)
 }

@@ -14,6 +14,7 @@ struct GOLF_COACHApp: App {
         let schema = Schema([
             Student.self,
             LessonPackage.self,
+            LessonCharge.self,
             LessonAppointment.self,
             LessonVideo.self,
             CoachAnalysisVideo.self,
