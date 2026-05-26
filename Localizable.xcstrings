@@ -1,6 +1,446 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Unable to prepare account statement because %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 이메일 주소가 등록되어 있지 않아 계정 명세서를 준비할 수 없습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 没有登记电子邮件地址，因此无法准备账户对账单。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 沒有登記電子郵件地址，因此無法準備帳戶明細。"
+          }
+        }
+      }
+    },
+    "This device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
+    "Payment saved, but %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제가 저장되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已保存，但 %@ 没有登记电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已儲存，但 %@ 沒有登記電子郵件地址。"
+          }
+        }
+      }
+    },
+    "Payment saved, but this device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제가 저장되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已保存，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已儲存，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
+    "Session charge saved, but %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 저장되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已保存，但 %@ 没有登记电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已儲存，但 %@ 沒有登記電子郵件地址。"
+          }
+        }
+      }
+    },
+    "Session charge saved, but this device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 저장되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已保存，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已儲存，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
+    "Lesson fee restored, but %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 복원되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已恢复，但 %@ 没有登记电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已恢復，但 %@ 沒有登記電子郵件地址。"
+          }
+        }
+      }
+    },
+    "Lesson fee restored, but this device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 복원되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已恢复，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已恢復，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
+    "Email failed to send: %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일 전송 실패: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件发送失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件傳送失敗：%@"
+          }
+        }
+      }
+    },
+    "Email sent." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일을 보냈습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件已发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件已傳送。"
+          }
+        }
+      }
+    },
+    "Email saved as draft." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일이 임시 보관함에 저장되었습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件已保存为草稿。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件已儲存為草稿。"
+          }
+        }
+      }
+    },
+    "Email failed to send." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일을 보내지 못했습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件发送失败。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件傳送失敗。"
+          }
+        }
+      }
+    },
+    "The whole payment package has been deleted. Would you like to email the updated account statement to %@?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전체 결제 패키지가 삭제되었습니다. 업데이트된 계정 명세서를 %@에게 이메일로 보내시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整个付款套餐已删除。是否要将更新后的账户对账单通过电子邮件发送给 %@？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整個付款套票已刪除。是否要將更新後的帳戶明細以電子郵件傳送給 %@？"
+          }
+        }
+      }
+    },
+    "Single Lesson" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단일 레슨"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单节课"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "單堂課"
+          }
+        }
+      }
+    },
+    "5-Lesson Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5회 레슨 패키지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5节课套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5堂課套票"
+          }
+        }
+      }
+    },
+    "10-Lesson Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10회 레슨 패키지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10节课套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10堂課套票"
+          }
+        }
+      }
+    },
+    "Custom Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "맞춤 패키지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自訂套票"
+          }
+        }
+      }
+    },
+    "Credit Card" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "신용카드"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信用卡"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信用卡"
+          }
+        }
+      }
+    },
+    "Debit" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직불카드"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借记卡"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "金融卡"
+          }
+        }
+      }
+    },
+    "Cash" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현금"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现金"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現金"
+          }
+        }
+      }
+    },
     "" : {
 
     },
@@ -132,7 +572,27 @@
     },
     "%lld min" : {
       "comment" : "A label showing the duration of a charge in minutes.",
-      "isCommentAutoGenerated" : true
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld분"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 分钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 分鐘"
+          }
+        }
+      }
     },
     "%lld player(s)" : {
       "localizations" : {
@@ -514,6 +974,7 @@
       }
     },
     "Age" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -549,6 +1010,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分析資訊"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分析信息"
           }
         }
       }
@@ -683,6 +1150,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "確定要刪除此影片嗎？此操作無法復原。"
+          }
+        }
+      }
+    },
+    "Are you sure? This permanently removes the %@ payment and all of its recorded lesson fees." : {
+      "comment" : "A confirmation alert that appears when the user is about to delete a payment from a student's package.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정말로 %@ 결제와 이 결제에 기록된 모든 레슨 비용을 영구적으로 삭제하시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定要永久删除 %@ 付款及其中记录的所有课程费用吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確定要永久刪除 %@ 付款及其中記錄的所有課程費用嗎？"
+          }
+        }
+      }
+    },
+    "Are you sure? This removes the recorded lesson fee of %@ and returns that amount to the student's balance." : {
+      "comment" : "A confirmation alert that lets the user reverse a lesson fee deduction. The argument is the amount of the lesson fee.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정말로 기록된 레슨 비용 %@을(를) 삭제하고 해당 금액을 학생 잔액으로 돌려주시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定要移除已记录的课程费用 %@，并将该金额退回学生余额吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確定要移除已記錄的課程費用 %@，並將該金額退回學生餘額嗎？"
           }
         }
       }
@@ -887,6 +1402,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "餘額：%@"
+          }
+        }
+      }
+    },
+    "Birthday" : {
+      "comment" : "A label that reads \"Birthday\".",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생년월일"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生日"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生日"
+          }
+        }
+      }
+    },
+    "Birthday on File" : {
+      "comment" : "A toggle that lets the user know if a student has a birthday on file.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생년월일 등록됨"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已登记生日"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已登記生日"
           }
         }
       }
@@ -1250,6 +1813,54 @@
         }
       }
     },
+    "Confirm Reversal" : {
+      "comment" : "A confirmation alert for reversing a previous action.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "취소 확인"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认撤销"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認撤銷"
+          }
+        }
+      }
+    },
+    "Continue" : {
+      "comment" : "A button that confirms the user's choice to continue with an action.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계속"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續"
+          }
+        }
+      }
+    },
     "Copy Notes" : {
       "comment" : "A button that copies the notes to the clipboard.",
       "isCommentAutoGenerated" : true,
@@ -1474,6 +2085,12 @@
             "state" : "translated",
             "value" : "刪除"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除"
+          }
         }
       }
     },
@@ -1545,6 +2162,30 @@
         }
       }
     },
+    "Delete Payment Package" : {
+      "comment" : "A label for a button that deletes a payment package.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제 패키지 삭제"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除付款套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除付款套票"
+          }
+        }
+      }
+    },
     "Delete Student" : {
       "localizations" : {
         "ko" : {
@@ -1585,6 +2226,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除影片"
+          }
+        }
+      }
+    },
+    "Delete Whole Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전체 패키지 삭제"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除整个套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除整個套票"
           }
         }
       }
@@ -1774,6 +2437,7 @@
       }
     },
     "e.g. 18" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -1855,6 +2519,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "編輯分析"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑分析"
           }
         }
       }
@@ -1945,6 +2615,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "電子郵件"
+          }
+        }
+      }
+    },
+    "Email Account Statement" : {
+      "comment" : "A button that emails the user's account statement.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계정 명세서 이메일 보내기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过电子邮件发送账户对账单"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以電子郵件傳送帳戶明細"
           }
         }
       }
@@ -2170,6 +2864,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "其他分析備註"
+          }
+        }
+      }
+    },
+    "Final Confirmation" : {
+      "comment" : "A confirmation alert for reversing a package's payment.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최종 확인"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最终确认"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最終確認"
           }
         }
       }
@@ -3186,6 +3904,30 @@
         }
       }
     },
+    "Not Now" : {
+      "comment" : "A button that cancels the email confirmation.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금 안 함"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂不发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫不傳送"
+          }
+        }
+      }
+    },
     "Notes" : {
       "localizations" : {
         "ko" : {
@@ -3434,6 +4176,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已付：%@"
+          }
+        }
+      }
+    },
+    "Payment Method" : {
+      "comment" : "A label for the payment method picker.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제 방법"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款方式"
           }
         }
       }
@@ -3708,7 +4474,32 @@
         }
       }
     },
+    "Record Lesson Fee" : {
+      "comment" : "A button that records a lesson fee as a deduction.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용 기록"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录课程费用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄課程費用"
+          }
+        }
+      }
+    },
     "Record Session Charge" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -3726,6 +4517,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "記錄課程費用"
+          }
+        }
+      }
+    },
+    "Referral Person Name" : {
+      "comment" : "A field for entering a referral person's name.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "추천인 이름"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推荐人姓名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推薦人姓名"
           }
         }
       }
@@ -3776,6 +4591,30 @@
         }
       }
     },
+    "Remove Added Payment" : {
+      "comment" : "A title for a confirmation alert that asks the user to confirm removing a payment.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "추가한 결제 삭제"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除已添加的付款"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除已新增的付款"
+          }
+        }
+      }
+    },
     "Remove Photo" : {
       "localizations" : {
         "ko" : {
@@ -3794,6 +4633,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移除照片"
+          }
+        }
+      }
+    },
+    "Remove the %@ payment of %@? Any lesson charges recorded against this payment will also be removed." : {
+      "comment" : "A confirmation message for reversing a payment for a specific package.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove the %1$@ payment of %2$@? Any lesson charges recorded against this payment will also be removed."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 결제 %@을(를) 삭제하시겠습니까? 이 결제에 기록된 모든 레슨 비용도 삭제됩니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@ 付款 %@ 吗？针对此付款记录的所有课程费用也会被移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@ 付款 %@ 嗎？針對此付款記錄的所有課程費用也會被移除。"
+          }
+        }
+      }
+    },
+    "Remove the lesson charge of %@ from %@? The credit will be restored." : {
+      "comment" : "A confirmation alert for reversing a lesson charge.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove the lesson charge of %1$@ from %2$@? The credit will be restored."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 레슨 비용 %@을(를) 삭제하시겠습니까? 크레딧이 복원됩니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@ 的课程费用 %@ 吗？额度将恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@ 的課程費用 %@ 嗎？額度將恢復。"
           }
         }
       }
@@ -3864,6 +4763,54 @@
         }
       }
     },
+    "Restore Deducted Fee" : {
+      "comment" : "A button that restores a lesson fee deduction.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차감된 비용 복원"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复已扣费用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復已扣費用"
+          }
+        }
+      }
+    },
+    "Restore Deducted Lesson Fee" : {
+      "comment" : "A button that restores a fee that was deducted from a user's balance.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차감된 레슨 비용 복원"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复已扣课程费用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復已扣課程費用"
+          }
+        }
+      }
+    },
     "Restore Latest Automatic Backup" : {
       "localizations" : {
         "ko" : {
@@ -3882,6 +4829,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "還原最新自動備份"
+          }
+        }
+      }
+    },
+    "Restore Latest Deducted Fee" : {
+      "comment" : "A button that restores a lesson fee deduction.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 차감 비용 복원"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复最近已扣费用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復最近已扣費用"
+          }
+        }
+      }
+    },
+    "Restore Latest Fee" : {
+      "comment" : "A button that restores a lesson fee that was deducted from a student's account.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 비용 복원"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复最近费用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復最近費用"
+          }
+        }
+      }
+    },
+    "Reversal Complete" : {
+      "comment" : "A title for an alert that confirms a reversal has been completed.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "복원 완료"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销完成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤銷完成"
+          }
+        }
+      }
+    },
+    "Reverse Deducted Lesson Fee" : {
+      "comment" : "A button that reverses a lesson fee deduction.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차감된 레슨 비용 되돌리기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销已扣课程费用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤銷已扣課程費用"
+          }
+        }
+      }
+    },
+    "Reverse Transaction" : {
+      "comment" : "A button that reverses a previous transaction.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "거래 되돌리기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销交易"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤銷交易"
           }
         }
       }
@@ -4150,6 +5217,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "傳送"
+          }
+        }
+      }
+    },
+    "Send Confirmation Email?" : {
+      "comment" : "A confirmation alert that asks if the user wants to send an email to the student after recording a lesson fee.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인 이메일을 보내시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送确认电子邮件？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送確認電子郵件？"
+          }
+        }
+      }
+    },
+    "Send Email" : {
+      "comment" : "A button that sends an email to a student with a lesson fee.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일 보내기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送电子邮件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送電子郵件"
           }
         }
       }
@@ -4796,6 +5911,29 @@
         }
       }
     },
+    "Text Account Statement" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계정 내역 문자 보내기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送账户明细短信"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送帳戶明細簡訊"
+          }
+        }
+      }
+    },
     "Text Student & Delete" : {
       "localizations" : {
         "ko" : {
@@ -4836,6 +5974,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "收費金額必須大於零且不能超過可用餘額。"
+          }
+        }
+      }
+    },
+    "The lesson fee has been recorded. Would you like to email the updated account statement to %@?" : {
+      "comment" : "A confirmation alert that appears when the user has successfully recorded a lesson fee.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 기록되었습니다. 업데이트된 계정 명세서를 %@에게 이메일로 보내시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已记录。是否要将更新后的账户对账单通过电子邮件发送给 %@？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已記錄。是否要將更新後的帳戶明細以電子郵件傳送給 %@？"
+          }
+        }
+      }
+    },
+    "The lesson fee has been restored. Would you like to email the updated account statement to %@?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 복원되었습니다. 업데이트된 계정 명세서를 %@에게 이메일로 보내시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已恢复。是否要将更新后的账户对账单通过电子邮件发送给 %@？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已恢復。是否要將更新後的帳戶明細以電子郵件傳送給 %@？"
+          }
+        }
+      }
+    },
+    "The payment has been saved. Would you like to email the updated account statement to %@?" : {
+      "comment" : "A message that appears when the user saves a payment.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제가 저장되었습니다. 업데이트된 계정 명세서를 %@에게 이메일로 보내시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已保存。是否要将更新后的账户对账单通过电子邮件发送给 %@？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已儲存。是否要將更新後的帳戶明細以電子郵件傳送給 %@？"
           }
         }
       }
@@ -5154,13 +6362,6 @@
             "value" : "復原線條"
           }
         }
-      }
-    },
-    "Text Account Statement" : {
-      "localizations" : {
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "계정 내역 문자 보내기" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发送账户明细短信" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "傳送帳戶明細簡訊" } }
       }
     },
     "Undo Session Charge" : {

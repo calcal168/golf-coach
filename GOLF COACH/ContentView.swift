@@ -1254,9 +1254,9 @@ private enum StudentUndoAction {
     var buttonTitle: String {
         switch self {
         case .lessonCharge:
-            return "Undo Session Charge"
+            return "Restore Last Deducted Fee"
         case .packageDeletion:
-            return "Undo Package Delete"
+            return "Restore Deleted Package"
         }
     }
 }
@@ -1279,7 +1279,8 @@ struct StudentDetailView: View {
     @State private var name: String
     @State private var phoneNumber: String
     @State private var email: String
-    @State private var age: String
+    @State private var birthday: Date?
+    @State private var referralPersonName: String
     @State private var yearsOfExperience: String
     @State private var handicap: String
     @State private var golfGoal: String
@@ -1301,8 +1302,12 @@ struct StudentDetailView: View {
     @State private var sessionVideoForEditing: LessonVideo?
     @State private var sessionAnalysisForEditing: CoachAnalysisVideo?
     @State private var packageToDeduct: LessonPackage?
-    @State private var lessonMessageBody = ""
-    @State private var isShowingLessonMessageComposer = false
+    @State private var lessonEmailBody = ""
+    @State private var isShowingLessonEmailComposer = false
+    @State private var pendingLessonConfirmationCharge: LessonCharge?
+    @State private var isConfirmingLessonEmail = false
+    @State private var accountUpdateEmailPromptMessage: String?
+    @State private var isConfirmingAccountUpdateEmail = false
     @State private var lessonStatusMessage: String?
     @State private var isShowingLessonStatus = false
     @State private var packagesPendingDeletion: [LessonPackage] = []
@@ -1313,6 +1318,14 @@ struct StudentDetailView: View {
     @State private var packageDeletionStatusMessage: String?
     @State private var isShowingPackageDeletionStatus = false
     @State private var lastUndoAction: StudentUndoAction?
+    @State private var isConfirmingUndoAction = false
+    @State private var packagePendingReversal: LessonPackage?
+    @State private var isConfirmingPackageReversal = false
+    @State private var isConfirmingFinalPackageReversal = false
+    @State private var chargePackagePendingReversal: LessonPackage?
+    @State private var chargePendingReversal: LessonCharge?
+    @State private var isConfirmingChargeReversal = false
+    @State private var isConfirmingFinalChargeReversal = false
     @State private var undoStatusMessage: String?
     @State private var isShowingUndoStatus = false
 
@@ -1327,7 +1340,8 @@ struct StudentDetailView: View {
         _name = State(initialValue: student.name)
         _phoneNumber = State(initialValue: student.phoneNumber)
         _email = State(initialValue: student.email)
-        _age = State(initialValue: student.age ?? "")
+        _birthday = State(initialValue: student.birthday)
+        _referralPersonName = State(initialValue: student.referralPersonName ?? "")
         _yearsOfExperience = State(initialValue: student.yearsOfExperience ?? "")
         _handicap = State(initialValue: student.handicap ?? "")
         _golfGoal = State(initialValue: student.golfGoal ?? "")
@@ -1399,10 +1413,11 @@ struct StudentDetailView: View {
                 recordSessionCharge(charge, from: package)
             }
         }
-        .sheet(isPresented: $isShowingLessonMessageComposer) {
-            MessageComposerView(
-                recipients: [student.phoneNumber],
-                body: lessonMessageBody,
+        .sheet(isPresented: $isShowingLessonEmailComposer) {
+            LessonEmailComposerView(
+                recipients: [student.email.trimmingCharacters(in: .whitespacesAndNewlines)],
+                subject: "Golf Lesson Account Statement",
+                body: lessonEmailBody,
                 onFinish: { resultMessage in
                     if let resultMessage {
                         lessonStatusMessage = resultMessage
@@ -1410,6 +1425,21 @@ struct StudentDetailView: View {
                     }
                 }
             )
+        }
+        .alert(
+            "Send Confirmation Email?",
+            isPresented: $isConfirmingLessonEmail,
+            presenting: pendingLessonConfirmationCharge
+        ) { charge in
+            Button("Send Email") {
+                prepareAccountStatementEmail(latestCharge: charge)
+                pendingLessonConfirmationCharge = nil
+            }
+            Button("Not Now", role: .cancel) {
+                pendingLessonConfirmationCharge = nil
+            }
+        } message: { _ in
+            Text("The lesson fee has been recorded. Would you like to email the updated account statement to \(student.name)?")
         }
         .alert("Lesson Update", isPresented: $isShowingLessonStatus, presenting: lessonStatusMessage) { _ in
             Button("OK", role: .cancel) { }
@@ -1448,6 +1478,95 @@ struct StudentDetailView: View {
 
     private var undoAlertDetailView: some View {
         packageDeletionDetailView
+        .alert("Confirm Reversal", isPresented: $isConfirmingUndoAction, presenting: lastUndoAction) { _ in
+            Button("Reverse Transaction", role: .destructive) {
+                undoLastAction()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { action in
+            Text(undoConfirmationMessage(for: action))
+        }
+        .alert(
+            "Remove Added Payment",
+            isPresented: $isConfirmingPackageReversal,
+            presenting: packagePendingReversal
+        ) { package in
+            Button("Continue", role: .destructive) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard packagePendingReversal != nil else { return }
+                    isConfirmingFinalPackageReversal = true
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                packagePendingReversal = nil
+            }
+        } message: { package in
+            Text("Remove the \(package.packageType.localizedName) payment of \(CurrencyFormatter.string(from: package.totalPaid))? Any lesson charges recorded against this payment will also be removed.")
+        }
+        .alert(
+            "Final Confirmation",
+            isPresented: $isConfirmingFinalPackageReversal,
+            presenting: packagePendingReversal
+        ) { package in
+            Button("Delete Whole Package", role: .destructive) {
+                reversePayment(package)
+            }
+            Button("Cancel", role: .cancel) {
+                packagePendingReversal = nil
+            }
+        } message: { package in
+            Text("Are you sure? This permanently removes the \(package.packageType.localizedName) payment and all of its recorded lesson fees.")
+        }
+        .alert(
+            "Reverse Deducted Lesson Fee",
+            isPresented: $isConfirmingChargeReversal,
+            presenting: chargePendingReversal
+        ) { charge in
+            Button("Continue", role: .destructive) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard chargePendingReversal != nil else { return }
+                    isConfirmingFinalChargeReversal = true
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                chargePendingReversal = nil
+                chargePackagePendingReversal = nil
+            }
+        } message: { charge in
+            Text("Remove the lesson charge of \(CurrencyFormatter.string(from: charge.amount)) from \(charge.chargedAt.formatted(date: .abbreviated, time: .omitted))? The credit will be restored.")
+        }
+        .alert(
+            "Final Confirmation",
+            isPresented: $isConfirmingFinalChargeReversal,
+            presenting: chargePendingReversal
+        ) { charge in
+            Button("Restore Deducted Fee", role: .destructive) {
+                reverseLessonCharge(charge)
+            }
+            Button("Cancel", role: .cancel) {
+                chargePendingReversal = nil
+                chargePackagePendingReversal = nil
+            }
+        } message: { charge in
+            Text("Are you sure? This removes the recorded lesson fee of \(CurrencyFormatter.string(from: charge.amount)) and returns that amount to the student's balance.")
+        }
+        .alert(
+            "Send Confirmation Email?",
+            isPresented: $isConfirmingAccountUpdateEmail,
+            presenting: accountUpdateEmailPromptMessage
+        ) { _ in
+            Button("Send Email") {
+                prepareAccountStatementEmail()
+                accountUpdateEmailPromptMessage = nil
+            }
+            Button("Not Now", role: .cancel) {
+                accountUpdateEmailPromptMessage = nil
+            }
+        } message: { message in
+            Text(message)
+        }
         .alert("Undo Complete", isPresented: $isShowingUndoStatus, presenting: undoStatusMessage) { _ in
             Button("OK", role: .cancel) { }
         } message: { message in
@@ -1481,7 +1600,8 @@ struct StudentDetailView: View {
         .onChange(of: name) { saveStudentDetails() }
         .onChange(of: phoneNumber) { saveStudentDetails() }
         .onChange(of: email) { saveStudentDetails() }
-        .onChange(of: age) { saveStudentDetails() }
+        .onChange(of: birthday) { saveStudentDetails() }
+        .onChange(of: referralPersonName) { saveStudentDetails() }
         .onChange(of: yearsOfExperience) { saveStudentDetails() }
         .onChange(of: handicap) { saveStudentDetails() }
         .onChange(of: golfGoal) { saveStudentDetails() }
@@ -1572,11 +1692,16 @@ struct StudentDetailView: View {
                     .buttonStyle(.borderless)
                 }
             }
-            LabeledContent("Age") {
-                TextField("e.g. 18", text: $age)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.trailing)
+            Toggle("Birthday on File", isOn: hasBirthday)
+            if birthday != nil {
+                DatePicker(
+                    "Birthday",
+                    selection: birthdaySelection,
+                    in: ...Date.now,
+                    displayedComponents: .date
+                )
             }
+            TextField("Referral Person Name", text: $referralPersonName)
         }
         .listRowBackground(StudentDetailSectionTint.studentInfo)
     }
@@ -1595,6 +1720,22 @@ struct StudentDetailView: View {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !email.isEmpty else { return nil }
         return URL(string: "mailto:\(email)")
+    }
+
+    private var hasBirthday: Binding<Bool> {
+        Binding(
+            get: { birthday != nil },
+            set: { includesBirthday in
+                birthday = includesBirthday ? (birthday ?? .now) : nil
+            }
+        )
+    }
+
+    private var birthdaySelection: Binding<Date> {
+        Binding(
+            get: { birthday ?? .now },
+            set: { birthday = $0 }
+        )
     }
 
     private var bioSection: some View {
@@ -1627,7 +1768,7 @@ struct StudentDetailView: View {
             LabeledContent("Remaining Credit", value: CurrencyFormatter.string(from: student.remainingValue))
             LabeledContent("Total Paid", value: CurrencyFormatter.string(from: student.totalPaid))
             if let activePackage = student.activePackage {
-                LabeledContent("Active Package", value: activePackage.packageType.rawValue)
+                LabeledContent("Active Package", value: activePackage.packageType.localizedName)
             }
 
             Button {
@@ -1643,14 +1784,14 @@ struct StudentDetailView: View {
             }
 
             Button {
-                prepareAccountStatementText()
+                prepareAccountStatementEmail()
             } label: {
-                Label("Text Account Statement", systemImage: "message")
+                Label("Email Account Statement", systemImage: "envelope")
             }
 
             if let lastUndoAction {
                 Button {
-                    undoLastAction()
+                    isConfirmingUndoAction = true
                 } label: {
                     Label(lastUndoAction.buttonTitle, systemImage: "arrow.uturn.backward")
                 }
@@ -1665,8 +1806,14 @@ struct StudentDetailView: View {
             onRequestDeduct: { package in
                 packageToDeduct = package
             },
-            onRequestDelete: { packages in
-                stagePackagesForDeletion(packages)
+            onRequestReversePackage: { package in
+                packagePendingReversal = package
+                isConfirmingPackageReversal = true
+            },
+            onRequestReverseCharge: { package, charge in
+                chargePackagePendingReversal = package
+                chargePendingReversal = charge
+                isConfirmingChargeReversal = true
             }
         )
     }
@@ -1684,23 +1831,28 @@ struct StudentDetailView: View {
         guard charge.amount > 0, charge.amount <= package.remainingValue else { return }
         package.charges.append(charge)
         package.lessonsUsed += 1
-        lastUndoAction = .lessonCharge(package, charge)
+        lastUndoAction = nil
         packageToDeduct = nil
 
-        prepareAccountStatementText(latestCharge: charge)
+        pendingLessonConfirmationCharge = charge
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard pendingLessonConfirmationCharge != nil else { return }
+            isConfirmingLessonEmail = true
+        }
     }
 
-    private func prepareAccountStatementText(latestCharge: LessonCharge? = nil) {
-        lessonMessageBody = StudentAccountStatementFormatter.message(for: student, latestCharge: latestCharge)
+    private func prepareAccountStatementEmail(latestCharge: LessonCharge? = nil) {
+        lessonEmailBody = StudentAccountStatementFormatter.message(for: student, latestCharge: latestCharge)
 
-        if student.phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty {
-            lessonStatusMessage = "Unable to prepare account statement because \(student.name) has no phone number on file."
+        if student.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lessonStatusMessage = String(localized: "Unable to prepare account statement because \(student.name) has no email address on file.")
             isShowingLessonStatus = true
             return
         }
 
-        guard MFMessageComposeViewController.canSendText() else {
-            lessonStatusMessage = "This device cannot send text messages. Try on a physical iPhone."
+        guard MFMailComposeViewController.canSendMail() else {
+            lessonStatusMessage = String(localized: "This device cannot send email. Set up Mail on an iPhone and try again.")
             isShowingLessonStatus = true
             return
         }
@@ -1708,10 +1860,10 @@ struct StudentDetailView: View {
         if latestCharge != nil {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(250))
-                isShowingLessonMessageComposer = true
+                isShowingLessonEmailComposer = true
             }
         } else {
-            isShowingLessonMessageComposer = true
+            isShowingLessonEmailComposer = true
         }
     }
 
@@ -1808,11 +1960,68 @@ struct StudentDetailView: View {
         isShowingUndoStatus = true
     }
 
+    private func undoConfirmationMessage(for action: StudentUndoAction) -> String {
+        switch action {
+        case .lessonCharge(_, let charge):
+            return "Reverse the lesson charge of \(CurrencyFormatter.string(from: charge.amount))? The credit will be restored."
+        case .packageDeletion(let packages):
+            return "Restore \(packages.count) deleted package record(s) to \(student.name)'s account?"
+        }
+    }
+
+    private func reversePayment(_ package: LessonPackage) {
+        guard student.packages.contains(where: { $0.persistentModelID == package.persistentModelID }) else {
+            packagePendingReversal = nil
+            isConfirmingFinalPackageReversal = false
+            return
+        }
+
+        student.packages.removeAll { $0.persistentModelID == package.persistentModelID }
+        packagePendingReversal = nil
+        isConfirmingFinalPackageReversal = false
+        lastUndoAction = nil
+        undoStatusMessage = "Payment reversed. \(student.name) now has \(CurrencyFormatter.string(from: student.remainingValue)) remaining."
+        promptForAccountUpdateEmail(
+            String(localized: "The whole payment package has been deleted. Would you like to email the updated account statement to \(student.name)?")
+        )
+    }
+
+    private func reverseLessonCharge(_ charge: LessonCharge) {
+        guard let package = chargePackagePendingReversal,
+              package.charges.contains(where: { $0.persistentModelID == charge.persistentModelID }) else {
+            chargePendingReversal = nil
+            chargePackagePendingReversal = nil
+            isConfirmingFinalChargeReversal = false
+            return
+        }
+
+        package.charges.removeAll { $0.persistentModelID == charge.persistentModelID }
+        package.lessonsUsed = max(package.lessonsUsed - 1, 0)
+        chargePendingReversal = nil
+        chargePackagePendingReversal = nil
+        isConfirmingFinalChargeReversal = false
+        lastUndoAction = nil
+        undoStatusMessage = "Lesson charge reversed. \(student.name) now has \(CurrencyFormatter.string(from: student.remainingValue)) remaining."
+        promptForAccountUpdateEmail(
+            String(localized: "The lesson fee has been restored. Would you like to email the updated account statement to \(student.name)?")
+        )
+    }
+
+    private func promptForAccountUpdateEmail(_ message: String) {
+        accountUpdateEmailPromptMessage = message
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard accountUpdateEmailPromptMessage != nil else { return }
+            isConfirmingAccountUpdateEmail = true
+        }
+    }
+
     private func saveStudentDetails() {
         student.name = name
         student.phoneNumber = phoneNumber
         student.email = email
-        student.age = age
+        student.birthday = birthday
+        student.referralPersonName = referralPersonName
         student.yearsOfExperience = yearsOfExperience
         student.handicap = handicap
         student.golfGoal = golfGoal
@@ -1858,7 +2067,8 @@ struct StudentDetailView: View {
 struct PackageListSection: View {
     @Bindable var student: Student
     let onRequestDeduct: (LessonPackage) -> Void
-    let onRequestDelete: ([LessonPackage]) -> Void
+    let onRequestReversePackage: (LessonPackage) -> Void
+    let onRequestReverseCharge: (LessonPackage, LessonCharge) -> Void
 
     var sortedPackages: [LessonPackage] {
         student.packages.sorted { $0.purchaseDate > $1.purchaseDate }
@@ -1873,7 +2083,7 @@ struct PackageListSection: View {
                 ForEach(sortedPackages) { package in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text(package.packageType.rawValue)
+                            Text(package.packageType.localizedName)
                                 .font(.headline)
                             Spacer()
                             Text("Balance: \(CurrencyFormatter.string(from: package.remainingValue))")
@@ -1893,14 +2103,29 @@ struct PackageListSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                        if let paymentMethod = package.paymentMethod {
+                            Label(paymentMethod.localizedName, systemImage: "creditcard")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
                         if !package.charges.isEmpty {
-                            ForEach(package.charges.sorted { $0.chargedAt > $1.chargedAt }.prefix(3)) { charge in
+                            ForEach(package.charges.sorted { $0.chargedAt > $1.chargedAt }) { charge in
                                 HStack {
                                     Text(charge.chargedAt, format: .dateTime.month().day())
                                     Text("\(charge.durationMinutes) min")
                                     Text("\(charge.participantCount) player(s)")
                                     Spacer()
                                     Text(CurrencyFormatter.string(from: charge.amount))
+                                    Button {
+                                        onRequestReverseCharge(package, charge)
+                                    } label: {
+                                        Image(systemName: "arrow.uturn.backward.circle")
+                                            .font(.caption)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(.red)
+                                    .accessibilityLabel("Restore Deducted Lesson Fee")
                                 }
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -1910,14 +2135,25 @@ struct PackageListSection: View {
                         Button {
                             onRequestDeduct(package)
                         } label: {
-                            Label("Record Session Charge", systemImage: "minus.circle")
+                            Label("Record Lesson Fee", systemImage: "minus.circle")
                         }
+                        .buttonStyle(.borderless)
                         .disabled(package.remainingValue <= 0)
+
+                        HStack {
+                            Spacer()
+                            Button(role: .destructive) {
+                                onRequestReversePackage(package)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("Delete Payment Package")
+                        }
                     }
                     .padding(.vertical, 6)
-                }
-                .onDelete { offsets in
-                    onRequestDelete(offsets.map { sortedPackages[$0] })
                 }
             }
         }
@@ -1975,7 +2211,7 @@ struct LogSessionChargeView: View {
                     }
                 }
             }
-            .navigationTitle("Record Session Charge")
+            .navigationTitle("Record Lesson Fee")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -3118,10 +3354,12 @@ struct AddPackageView: View {
     @State private var lessonsPurchased = 5
     @State private var totalPaid = 0.0
     @State private var purchaseDate = Date.now
+    @State private var paymentMethod = PaymentMethod.creditCard
     @State private var hasSavedPackage = false
-    @State private var messageRecipients: [String] = []
-    @State private var messageBody = ""
-    @State private var isShowingMessageComposer = false
+    @State private var emailRecipients: [String] = []
+    @State private var emailBody = ""
+    @State private var isShowingEmailComposer = false
+    @State private var isConfirmingEmail = false
     @State private var saveStatusMessage: String?
     @State private var isShowingSaveStatus = false
 
@@ -3130,7 +3368,7 @@ struct AddPackageView: View {
             Form {
                 Picker("Package", selection: $packageType) {
                     ForEach(LessonPackageType.allCases) { type in
-                        Text(type.rawValue).tag(type)
+                        Text(type.localizedName).tag(type)
                     }
                 }
                 .onChange(of: packageType) { _, newValue in
@@ -3149,6 +3387,11 @@ struct AddPackageView: View {
                 Stepper("Lessons: \(lessonsPurchased)", value: $lessonsPurchased, in: 1...100)
                 TextField("Total Paid", value: $totalPaid, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
                     .keyboardType(.decimalPad)
+                Picker("Payment Method", selection: $paymentMethod) {
+                    ForEach(PaymentMethod.allCases) { method in
+                        Text(method.localizedName).tag(method)
+                    }
+                }
                 DatePicker("Purchase Date", selection: $purchaseDate, displayedComponents: .date)
             }
             .navigationTitle("New Payment")
@@ -3158,19 +3401,30 @@ struct AddPackageView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        savePackageAndTextBalance()
+                        savePackageAndEmailBalance()
                     }
                     .disabled(hasSavedPackage)
                 }
             }
-            .sheet(isPresented: $isShowingMessageComposer) {
-                MessageComposerView(
-                    recipients: messageRecipients,
-                    body: messageBody,
+            .sheet(isPresented: $isShowingEmailComposer) {
+                LessonEmailComposerView(
+                    recipients: emailRecipients,
+                    subject: "Golf Coach Payment Confirmation",
+                    body: emailBody,
                     onFinish: { _ in
                         dismiss()
                     }
                 )
+            }
+            .alert("Send Confirmation Email?", isPresented: $isConfirmingEmail) {
+                Button("Send Email") {
+                    preparePaymentEmail()
+                }
+                Button("Not Now", role: .cancel) {
+                    dismiss()
+                }
+            } message: {
+                Text("The payment has been saved. Would you like to email the updated account statement to \(student.name)?")
             }
             .alert("Payment Saved", isPresented: $isShowingSaveStatus, presenting: saveStatusMessage) { _ in
                 Button("OK", role: .cancel) {
@@ -3182,35 +3436,43 @@ struct AddPackageView: View {
         }
     }
 
-    private func savePackageAndTextBalance() {
+    private func savePackageAndEmailBalance() {
         guard !hasSavedPackage else { return }
 
         let package = LessonPackage(
             packageType: packageType,
             lessonsPurchased: lessonsPurchased,
             totalPaid: Decimal(totalPaid),
-            purchaseDate: purchaseDate
+            purchaseDate: purchaseDate,
+            paymentMethod: paymentMethod
         )
         student.packages.append(package)
         hasSavedPackage = true
 
-        let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        messageRecipients = [phoneNumber]
-        messageBody = StudentAccountStatementFormatter.message(for: student)
+        let email = student.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        emailRecipients = [email]
+        emailBody = StudentAccountStatementFormatter.message(for: student)
+        isConfirmingEmail = true
+    }
 
-        guard !phoneNumber.isEmpty else {
-            saveStatusMessage = "Payment saved, but \(student.name) has no phone number on file."
+    private func preparePaymentEmail() {
+        let email = student.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else {
+            saveStatusMessage = String(localized: "Payment saved, but \(student.name) has no email address on file.")
             isShowingSaveStatus = true
             return
         }
 
-        guard MFMessageComposeViewController.canSendText() else {
-            saveStatusMessage = "Payment saved, but this device cannot send text messages. Try on a physical iPhone."
+        guard MFMailComposeViewController.canSendMail() else {
+            saveStatusMessage = String(localized: "Payment saved, but this device cannot send email. Set up Mail on an iPhone and try again.")
             isShowingSaveStatus = true
             return
         }
 
-        isShowingMessageComposer = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            isShowingEmailComposer = true
+        }
     }
 }
 
@@ -3395,11 +3657,23 @@ struct PaymentsView: View {
     @State private var studentForLesson: Student?
     @State private var studentForCharge: Student?
     @State private var packageForCharge: LessonPackage?
-    @State private var chargeMessageBody = ""
-    @State private var chargeMessageRecipients: [String] = []
-    @State private var isShowingChargeMessageComposer = false
+    @State private var chargeEmailBody = ""
+    @State private var chargeEmailRecipients: [String] = []
+    @State private var isShowingChargeEmailComposer = false
+    @State private var pendingConfirmationCharge: LessonCharge?
+    @State private var studentPendingConfirmationEmail: Student?
+    @State private var isConfirmingChargeEmail = false
     @State private var chargeStatusMessage: String?
     @State private var isShowingChargeStatus = false
+    @State private var reversalStudent: Student?
+    @State private var chargePackagePendingReversal: LessonPackage?
+    @State private var chargePendingReversal: LessonCharge?
+    @State private var isConfirmingChargeReversal = false
+    @State private var isConfirmingFinalChargeReversal = false
+    @State private var reversalEmailStudent: Student?
+    @State private var isConfirmingReversalEmail = false
+    @State private var reversalStatusMessage: String?
+    @State private var isShowingReversalStatus = false
 
     var body: some View {
         NavigationStack {
@@ -3435,6 +3709,7 @@ struct PaymentsView: View {
                                 } label: {
                                     Label("Add Payment", systemImage: "creditcard")
                                 }
+                                .buttonStyle(.borderless)
 
                                 Spacer()
 
@@ -3443,6 +3718,7 @@ struct PaymentsView: View {
                                 } label: {
                                     Label("Schedule", systemImage: "calendar.badge.plus")
                                 }
+                                .buttonStyle(.borderless)
                             }
                             .font(.caption.weight(.semibold))
 
@@ -3451,8 +3727,23 @@ struct PaymentsView: View {
                                     studentForCharge = student
                                     packageForCharge = package
                                 } label: {
-                                    Label("Record Session Charge", systemImage: "minus.circle")
+                                    Label("Record Lesson Fee", systemImage: "minus.circle")
                                 }
+                                .buttonStyle(.borderless)
+                                .font(.caption.weight(.semibold))
+                            }
+
+                            if let latestPackage = student.packages.sorted(by: { $0.purchaseDate > $1.purchaseDate }).first,
+                               let latestCharge = latestPackage.charges.sorted(by: { $0.chargedAt > $1.chargedAt }).first {
+                                Button(role: .destructive) {
+                                    reversalStudent = student
+                                    chargePackagePendingReversal = latestPackage
+                                    chargePendingReversal = latestCharge
+                                    isConfirmingChargeReversal = true
+                                } label: {
+                                    Label("Restore Latest Fee", systemImage: "arrow.uturn.backward.circle")
+                                }
+                                .buttonStyle(.borderless)
                                 .font(.caption.weight(.semibold))
                             }
                         }
@@ -3473,13 +3764,20 @@ struct PaymentsView: View {
                 LogSessionChargeView(package: package) { charge in
                     package.charges.append(charge)
                     package.lessonsUsed += 1
-                    prepareChargeMessage(for: charge)
+                    studentPendingConfirmationEmail = studentForCharge
+                    pendingConfirmationCharge = charge
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        guard pendingConfirmationCharge != nil else { return }
+                        isConfirmingChargeEmail = true
+                    }
                 }
             }
-            .sheet(isPresented: $isShowingChargeMessageComposer) {
-                MessageComposerView(
-                    recipients: chargeMessageRecipients,
-                    body: chargeMessageBody,
+            .sheet(isPresented: $isShowingChargeEmailComposer) {
+                LessonEmailComposerView(
+                    recipients: chargeEmailRecipients,
+                    subject: "Golf Lesson Account Statement",
+                    body: chargeEmailBody,
                     onFinish: { resultMessage in
                         if let resultMessage {
                             chargeStatusMessage = resultMessage
@@ -3488,7 +3786,74 @@ struct PaymentsView: View {
                     }
                 )
             }
+            .alert(
+                "Send Confirmation Email?",
+                isPresented: $isConfirmingChargeEmail,
+                presenting: pendingConfirmationCharge
+            ) { charge in
+                Button("Send Email") {
+                    prepareChargeEmail(for: charge)
+                    pendingConfirmationCharge = nil
+                }
+                Button("Not Now", role: .cancel) {
+                    pendingConfirmationCharge = nil
+                    studentPendingConfirmationEmail = nil
+                }
+            } message: { _ in
+                Text("The lesson fee has been recorded. Would you like to email the updated account statement to \(studentPendingConfirmationEmail?.name ?? "the student")?")
+            }
             .alert("Lesson Update", isPresented: $isShowingChargeStatus, presenting: chargeStatusMessage) { _ in
+                Button("OK", role: .cancel) { }
+            } message: { message in
+                Text(message)
+            }
+            .alert(
+                "Restore Latest Deducted Fee",
+                isPresented: $isConfirmingChargeReversal,
+                presenting: chargePendingReversal
+            ) { charge in
+                Button("Continue", role: .destructive) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(150))
+                        guard chargePendingReversal != nil else { return }
+                        isConfirmingFinalChargeReversal = true
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    chargePendingReversal = nil
+                    chargePackagePendingReversal = nil
+                    reversalStudent = nil
+                }
+            } message: { charge in
+                Text("Remove the lesson charge of \(CurrencyFormatter.string(from: charge.amount)) from \(charge.chargedAt.formatted(date: .abbreviated, time: .omitted))? The credit will be restored.")
+            }
+            .alert(
+                "Final Confirmation",
+                isPresented: $isConfirmingFinalChargeReversal,
+                presenting: chargePendingReversal
+            ) { charge in
+                Button("Restore Deducted Fee", role: .destructive) {
+                    reverseLessonCharge(charge)
+                }
+                Button("Cancel", role: .cancel) {
+                    chargePendingReversal = nil
+                    chargePackagePendingReversal = nil
+                    reversalStudent = nil
+                }
+            } message: { charge in
+                Text("Are you sure? This removes the recorded lesson fee of \(CurrencyFormatter.string(from: charge.amount)) and returns that amount to the student's balance.")
+            }
+            .alert("Send Confirmation Email?", isPresented: $isConfirmingReversalEmail, presenting: reversalEmailStudent) { _ in
+                Button("Send Email") {
+                    prepareReversalEmail()
+                }
+                Button("Not Now", role: .cancel) {
+                    reversalEmailStudent = nil
+                }
+            } message: { student in
+                Text("The lesson fee has been restored. Would you like to email the updated account statement to \(student.name)?")
+            }
+            .alert("Reversal Complete", isPresented: $isShowingReversalStatus, presenting: reversalStatusMessage) { _ in
                 Button("OK", role: .cancel) { }
             } message: { message in
                 Text(message)
@@ -3496,28 +3861,82 @@ struct PaymentsView: View {
         }
     }
 
-    private func prepareChargeMessage(for charge: LessonCharge) {
-        guard let student = studentForCharge else { return }
-        chargeMessageBody = StudentAccountStatementFormatter.message(
+    private func prepareChargeEmail(for charge: LessonCharge) {
+        guard let student = studentPendingConfirmationEmail ?? studentForCharge else { return }
+        chargeEmailBody = StudentAccountStatementFormatter.message(
             for: student,
             latestCharge: charge
         )
-        let phoneNumber = student.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !phoneNumber.isEmpty else {
-            chargeStatusMessage = "Session charge saved, but \(student.name) has no phone number on file."
+        let email = student.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else {
+            chargeStatusMessage = String(localized: "Session charge saved, but \(student.name) has no email address on file.")
             isShowingChargeStatus = true
+            studentPendingConfirmationEmail = nil
             return
         }
-        guard MFMessageComposeViewController.canSendText() else {
-            chargeStatusMessage = "Session charge saved, but this device cannot send text messages. Try on a physical iPhone."
+        guard MFMailComposeViewController.canSendMail() else {
+            chargeStatusMessage = String(localized: "Session charge saved, but this device cannot send email. Set up Mail on an iPhone and try again.")
             isShowingChargeStatus = true
+            studentPendingConfirmationEmail = nil
             return
         }
 
-        chargeMessageRecipients = [phoneNumber]
+        chargeEmailRecipients = [email]
+        studentPendingConfirmationEmail = nil
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
-            isShowingChargeMessageComposer = true
+            isShowingChargeEmailComposer = true
+        }
+    }
+
+    private func prepareReversalEmail() {
+        guard let student = reversalEmailStudent else { return }
+        chargeEmailBody = StudentAccountStatementFormatter.message(for: student)
+        let email = student.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else {
+            chargeStatusMessage = String(localized: "Lesson fee restored, but \(student.name) has no email address on file.")
+            isShowingChargeStatus = true
+            reversalEmailStudent = nil
+            return
+        }
+        guard MFMailComposeViewController.canSendMail() else {
+            chargeStatusMessage = String(localized: "Lesson fee restored, but this device cannot send email. Set up Mail on an iPhone and try again.")
+            isShowingChargeStatus = true
+            reversalEmailStudent = nil
+            return
+        }
+
+        chargeEmailRecipients = [email]
+        reversalEmailStudent = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            isShowingChargeEmailComposer = true
+        }
+    }
+
+    private func reverseLessonCharge(_ charge: LessonCharge) {
+        guard let student = reversalStudent,
+              let package = chargePackagePendingReversal,
+              package.charges.contains(where: { $0.persistentModelID == charge.persistentModelID }) else {
+            chargePendingReversal = nil
+            chargePackagePendingReversal = nil
+            reversalStudent = nil
+            isConfirmingFinalChargeReversal = false
+            return
+        }
+
+        package.charges.removeAll { $0.persistentModelID == charge.persistentModelID }
+        package.lessonsUsed = max(package.lessonsUsed - 1, 0)
+        reversalEmailStudent = student
+        chargePendingReversal = nil
+        chargePackagePendingReversal = nil
+        reversalStudent = nil
+        isConfirmingFinalChargeReversal = false
+        reversalStatusMessage = "Lesson charge reversed. \(student.name) now has \(CurrencyFormatter.string(from: student.remainingValue)) remaining."
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard reversalEmailStudent != nil else { return }
+            isConfirmingReversalEmail = true
         }
     }
 }
@@ -5899,6 +6318,67 @@ struct MarketingMailComposerView: UIViewControllerRepresentable {
     }
 }
 
+struct LessonEmailComposerView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let subject: String
+    let body: String
+    let onFinish: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let controller = MFMailComposeViewController()
+        controller.mailComposeDelegate = context.coordinator
+        controller.setToRecipients(recipients)
+        controller.setSubject(subject)
+        controller.setMessageBody(body, isHTML: false)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {
+        uiViewController.setToRecipients(recipients)
+        uiViewController.setSubject(subject)
+        uiViewController.setMessageBody(body, isHTML: false)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(dismiss: dismiss, onFinish: onFinish)
+    }
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let dismiss: DismissAction
+        let onFinish: (String?) -> Void
+
+        init(dismiss: DismissAction, onFinish: @escaping (String?) -> Void) {
+            self.dismiss = dismiss
+            self.onFinish = onFinish
+        }
+
+        func mailComposeController(
+            _ controller: MFMailComposeViewController,
+            didFinishWith result: MFMailComposeResult,
+            error: Error?
+        ) {
+            if let error {
+                onFinish(String(localized: "Email failed to send: \(error.localizedDescription)"))
+            } else {
+                switch result {
+                case .sent:
+                    onFinish(String(localized: "Email sent."))
+                case .saved:
+                    onFinish(String(localized: "Email saved as draft."))
+                case .failed:
+                    onFinish(String(localized: "Email failed to send."))
+                case .cancelled:
+                    onFinish(nil)
+                @unknown default:
+                    onFinish(nil)
+                }
+            }
+            dismiss()
+        }
+    }
+}
+
 struct MessageComposerView: UIViewControllerRepresentable {
     let recipients: [String]
     let body: String
@@ -6072,6 +6552,8 @@ struct StudentBackupRecord: Codable {
     let name: String
     let phoneNumber: String
     let email: String
+    let birthday: Date?
+    let referralPersonName: String?
     let age: String?
     let yearsOfExperience: String?
     let handicap: String?
@@ -6087,6 +6569,8 @@ struct StudentBackupRecord: Codable {
         name = student.name
         phoneNumber = student.phoneNumber
         email = student.email
+        birthday = student.birthday
+        referralPersonName = student.referralPersonName
         age = student.age
         yearsOfExperience = student.yearsOfExperience
         handicap = student.handicap
@@ -6104,6 +6588,8 @@ struct StudentBackupRecord: Codable {
             name: name,
             phoneNumber: phoneNumber,
             email: email,
+            birthday: birthday,
+            referralPersonName: referralPersonName,
             age: age,
             yearsOfExperience: yearsOfExperience,
             handicap: handicap,
@@ -6124,6 +6610,7 @@ struct LessonPackageBackupRecord: Codable {
     let lessonsUsed: Int
     let totalPaid: Decimal
     let purchaseDate: Date
+    let paymentMethodRawValue: String?
     let charges: [LessonChargeBackupRecord]?
 
     init(package: LessonPackage) {
@@ -6132,6 +6619,7 @@ struct LessonPackageBackupRecord: Codable {
         lessonsUsed = package.lessonsUsed
         totalPaid = package.totalPaid
         purchaseDate = package.purchaseDate
+        paymentMethodRawValue = package.paymentMethodRawValue
         charges = package.charges.map(LessonChargeBackupRecord.init)
     }
 
@@ -6142,6 +6630,7 @@ struct LessonPackageBackupRecord: Codable {
             lessonsUsed: lessonsUsed,
             totalPaid: totalPaid,
             purchaseDate: purchaseDate,
+            paymentMethod: paymentMethodRawValue.flatMap(PaymentMethod.init(rawValue:)),
             charges: charges?.map { $0.makeCharge() } ?? []
         )
     }
@@ -6333,7 +6822,8 @@ enum StudentExporter {
             "Student Name",
             "Phone Number",
             "Email",
-            "Age",
+            "Birthday",
+            "Referral Person Name",
             "Years of Experience",
             "Handicap",
             "Golf Goal",
@@ -6345,6 +6835,7 @@ enum StudentExporter {
             "Amount Deducted",
             "Remaining Value",
             "Active Package",
+            "Payment Methods",
             "Upcoming Lessons",
             "Saved Videos"
         ]
@@ -6355,12 +6846,17 @@ enum StudentExporter {
             let amountDeducted = student.packages.reduce(Decimal.zero) { $0 + $1.amountDeducted }
             let remainingValue = student.packages.reduce(Decimal.zero) { $0 + $1.remainingValue }
             let upcomingLessons = student.lessons.filter { !$0.isCompleted && $0.scheduledAt >= .now }.count
+            let paymentMethods = student.packages
+                .sorted { $0.purchaseDate > $1.purchaseDate }
+                .compactMap(\.paymentMethod?.rawValue)
+                .joined(separator: "; ")
 
             return [
                 student.name,
                 student.phoneNumber,
                 student.email,
-                student.age ?? "",
+                student.birthday.map(dateString) ?? "",
+                student.referralPersonName ?? "",
                 student.yearsOfExperience ?? "",
                 student.handicap ?? "",
                 student.golfGoal ?? "",
@@ -6372,6 +6868,7 @@ enum StudentExporter {
                 decimalString(amountDeducted),
                 decimalString(remainingValue),
                 student.activePackage?.packageType.rawValue ?? "",
+                paymentMethods,
                 "\(upcomingLessons)",
                 "\(student.videos.count)"
             ]
@@ -6395,6 +6892,10 @@ enum StudentExporter {
 
     nonisolated private static func decimalString(_ value: Decimal) -> String {
         NSDecimalNumber(decimal: value).stringValue
+    }
+
+    nonisolated private static func dateString(_ value: Date) -> String {
+        value.formatted(.iso8601.year().month().day())
     }
 }
 
@@ -6606,8 +7107,9 @@ enum StudentAccountStatementFormatter {
         }
 
         for package in student.packages.sorted(by: { $0.purchaseDate < $1.purchaseDate }) {
+            let paymentMethod = package.paymentMethod.map { " via \($0.rawValue)" } ?? ""
             lines.append(
-                "\(package.packageType.rawValue) - Paid \(CurrencyFormatter.string(from: package.totalPaid))"
+                "\(package.packageType.rawValue) - Paid \(CurrencyFormatter.string(from: package.totalPaid))\(paymentMethod)"
             )
 
             let sortedCharges = package.charges.sorted { $0.chargedAt < $1.chargedAt }

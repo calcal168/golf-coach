@@ -15,6 +15,38 @@ enum LessonPackageType: String, CaseIterable, Identifiable, Codable {
     case custom = "Custom Package"
 
     var id: String { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .single:
+            return String(localized: "Single Lesson")
+        case .fiveLesson:
+            return String(localized: "5-Lesson Package")
+        case .tenLesson:
+            return String(localized: "10-Lesson Package")
+        case .custom:
+            return String(localized: "Custom Package")
+        }
+    }
+}
+
+enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
+    case creditCard = "Credit Card"
+    case debit = "Debit"
+    case cash = "Cash"
+
+    var id: String { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .creditCard:
+            return String(localized: "Credit Card")
+        case .debit:
+            return String(localized: "Debit")
+        case .cash:
+            return String(localized: "Cash")
+        }
+    }
 }
 
 enum ReminderLeadTime: String, CaseIterable, Identifiable, Codable {
@@ -41,6 +73,9 @@ final class Student {
     var name: String
     var phoneNumber: String
     var email: String
+    var birthday: Date?
+    var referralPersonName: String?
+    // Retained so existing records and older backups remain compatible.
     var age: String?
     var yearsOfExperience: String?
     var handicap: String?
@@ -59,6 +94,8 @@ final class Student {
         name: String = "New Student",
         phoneNumber: String = "",
         email: String = "",
+        birthday: Date? = nil,
+        referralPersonName: String? = nil,
         age: String? = nil,
         yearsOfExperience: String? = nil,
         handicap: String? = nil,
@@ -75,6 +112,8 @@ final class Student {
         self.name = name
         self.phoneNumber = phoneNumber
         self.email = email
+        self.birthday = birthday
+        self.referralPersonName = referralPersonName
         self.age = age
         self.yearsOfExperience = yearsOfExperience
         self.handicap = handicap
@@ -184,6 +223,7 @@ final class LessonPackage {
     var lessonsUsed: Int
     var totalPaid: Decimal
     var purchaseDate: Date
+    var paymentMethodRawValue: String?
     @Relationship(deleteRule: .cascade) var charges: [LessonCharge]
 
     init(
@@ -192,6 +232,7 @@ final class LessonPackage {
         lessonsUsed: Int = 0,
         totalPaid: Decimal = 0,
         purchaseDate: Date = .now,
+        paymentMethod: PaymentMethod? = nil,
         charges: [LessonCharge] = []
     ) {
         self.packageTypeRawValue = packageType.rawValue
@@ -199,12 +240,18 @@ final class LessonPackage {
         self.lessonsUsed = lessonsUsed
         self.totalPaid = totalPaid
         self.purchaseDate = purchaseDate
+        self.paymentMethodRawValue = paymentMethod?.rawValue
         self.charges = charges
     }
 
     var packageType: LessonPackageType {
         get { LessonPackageType(rawValue: packageTypeRawValue) ?? .custom }
         set { packageTypeRawValue = newValue.rawValue }
+    }
+
+    var paymentMethod: PaymentMethod? {
+        get { paymentMethodRawValue.flatMap(PaymentMethod.init(rawValue:)) }
+        set { paymentMethodRawValue = newValue?.rawValue }
     }
 
     var remainingLessons: Int {
