@@ -8,6 +8,7 @@
 import EventKit
 import EventKitUI
 import MessageUI
+import CoreTransferable
 import PhotosUI
 import Photos
 import AVKit
@@ -106,6 +107,9 @@ struct ContentView: View {
 
             VideoLibraryView(onPlayVideo: openVideo)
                 .tabItem { Label("Videos", systemImage: "video") }
+
+            DrillLibraryView()
+                .tabItem { Label("Drills", systemImage: "list.bullet.clipboard") }
         }
         .fullScreenCover(item: $selectedVideo, onDismiss: {
             print("DEBUG ContentView selectedVideo cleared on dismiss")
@@ -1385,7 +1389,7 @@ struct StudentDetailView: View {
             .ignoresSafeArea()
         }
         .sheet(item: $sessionNoteToShare) { note in
-            SessionNoteShareView(note: note, studentName: student.name)
+            SessionNoteShareView(note: note, studentName: student.name, studentEmail: student.email)
         }
         .sheet(isPresented: $isAddingSessionNote) {
             EditSessionNoteView(student: student, defaultDate: sessionNoteDefaultDate)
@@ -2896,9 +2900,19 @@ struct SessionNoteCard: View {
     let note: LessonSessionNote
     let onEdit: () -> Void
     let onShare: () -> Void
+    @State private var previewAttachment: LessonNoteImageAttachment?
 
     var hasContent: Bool {
-        !note.focus.isEmpty || !note.problems.isEmpty || !note.improvements.isEmpty || !note.generalNotes.isEmpty
+        !note.lessonFocus.isEmpty ||
+        !note.coachNotes.isEmpty ||
+        !note.homework.isEmpty ||
+        !note.drills.isEmpty ||
+        !note.nextLessonGoal.isEmpty ||
+        !note.privateCoachJournal.isEmpty ||
+        !note.focus.isEmpty ||
+        !note.problems.isEmpty ||
+        !note.improvements.isEmpty ||
+        !note.generalNotes.isEmpty
     }
 
     var body: some View {
@@ -2909,10 +2923,51 @@ struct SessionNoteCard: View {
                     .italic()
                     .font(.subheadline)
             } else {
+                if !note.lessonFocus.isEmpty { SessionNoteField(label: "Lesson Focus", text: note.lessonFocus) }
+                if !note.coachNotes.isEmpty { SessionNoteField(label: "Coach Notes", text: note.coachNotes) }
+                if !note.homework.isEmpty { SessionNoteField(label: "Assigned Homework", text: note.homework) }
+                if !note.drills.isEmpty { SessionNoteField(label: "Drills", text: note.drills) }
+                if !note.assignedDrills.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Assigned Drills")
+                            .textCase(.uppercase)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(note.assignedDrills.sorted { $0.title < $1.title }) { drill in
+                            AssignedDrillDisplayCard(drill: drill)
+                        }
+                    }
+                }
+                if !note.nextLessonGoal.isEmpty { SessionNoteField(label: "Next Lesson Goal", text: note.nextLessonGoal) }
+                if !note.privateCoachJournal.isEmpty {
+                    SessionNoteField(label: "Private Coach Journal", text: note.privateCoachJournal)
+                }
                 if !note.focus.isEmpty { SessionNoteField(label: "Today's Focus", text: note.focus) }
                 if !note.problems.isEmpty { SessionNoteField(label: "Problem Areas", text: note.problems) }
                 if !note.improvements.isEmpty { SessionNoteField(label: "Areas to Improve", text: note.improvements) }
                 if !note.generalNotes.isEmpty { SessionNoteField(label: "Additional Notes", text: note.generalNotes) }
+            }
+
+            if !note.imageAttachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(note.imageAttachments.sorted { $0.createdAt < $1.createdAt }) { attachment in
+                            if let image = UIImage(data: attachment.imageData) {
+                                Button {
+                                    previewAttachment = attachment
+                                } label: {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 70, height: 70)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Open Swing Screenshot")
+                            }
+                        }
+                    }
+                }
             }
 
             HStack(spacing: 16) {
@@ -2923,7 +2978,7 @@ struct SessionNoteCard: View {
                 .buttonStyle(.borderless)
 
                 Button(action: onShare) {
-                    Label("Share Notes", systemImage: "square.and.arrow.up")
+                    Label("Share Summary", systemImage: "square.and.arrow.up")
                 }
                 .font(.caption)
                 .buttonStyle(.borderless)
@@ -2932,16 +2987,80 @@ struct SessionNoteCard: View {
             }
         }
         .padding(.vertical, 4)
+        .fullScreenCover(item: $previewAttachment) { attachment in
+            LessonNoteAttachmentPreviewView(attachment: attachment)
+        }
+    }
+}
+
+struct AssignedDrillDisplayCard: View {
+    let drill: Drill
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(drill.title)
+                .font(.subheadline.weight(.semibold))
+            if !drill.purpose.isEmpty {
+                Text(drill.purpose)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !drill.recommendedReps.isEmpty {
+                Text("Reps: \(drill.recommendedReps)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct LessonNoteAttachmentPreviewView: View {
+    let attachment: LessonNoteImageAttachment
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Spacer()
+
+                if let image = UIImage(data: attachment.imageData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                }
+
+                if !attachment.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(attachment.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+                }
+            }
+            .navigationTitle("Swing Screenshot")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }
 
 struct SessionNoteField: View {
-    let label: String
+    let label: LocalizedStringKey
     let text: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased())
+            Text(label)
+                .textCase(.uppercase)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(text)
@@ -2949,6 +3068,51 @@ struct SessionNoteField: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+enum StudentLessonSummaryFormatter {
+    static func summary(for note: LessonSessionNote, studentName: String) -> String {
+        let date = note.sessionDate.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        let name = value(studentName)
+        let legacyCoachNotes = [note.problems, note.generalNotes]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+
+        let fields: [(String, String)] = [
+            (String(localized: "Student"), name),
+            (String(localized: "Lesson Date"), date),
+            (String(localized: "Today's Focus"), value(note.lessonFocus, fallback: note.focus)),
+            (String(localized: "Coach Notes"), value(note.coachNotes, fallback: legacyCoachNotes)),
+            (String(localized: "Assigned Homework"), value(note.homework)),
+            (String(localized: "Drills"), value(note.drills, fallback: note.improvements)),
+            (String(localized: "Next Lesson Goal"), value(note.nextLessonGoal))
+        ]
+
+        var details = fields.map { "\($0.0.uppercased())\n\($0.1)" }.joined(separator: "\n\n")
+        if !note.assignedDrills.isEmpty {
+            let drillSummaries = note.assignedDrills.sorted { $0.title < $1.title }.map { drill in
+                [
+                    drill.title,
+                    "\(String(localized: "Purpose")): \(value(drill.purpose))",
+                    "\(String(localized: "Instructions")): \(value(drill.instructions))",
+                    "\(String(localized: "Recommended Reps")): \(value(drill.recommendedReps))",
+                    "\(String(localized: "Coach Tips")): \(value(drill.coachTips))"
+                ].joined(separator: "\n")
+            }
+            details += "\n\n\(String(localized: "Assigned Drills").uppercased())\n\(drillSummaries.joined(separator: "\n\n"))"
+        }
+        return "\(String(localized: "Golf Lesson Summary"))\n\n\(details)"
+    }
+
+    private static func value(_ value: String, fallback: String = "") -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+
+        let trimmedFallback = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedFallback.isEmpty ? String(localized: "Not provided") : trimmedFallback
     }
 }
 
@@ -3050,9 +3214,43 @@ struct EditCoachAnalysisView: View {
     }
 }
 
+private struct LessonNoteAttachmentDraft: Identifiable {
+    let id = UUID()
+    let imageData: Data
+    let createdAt: Date
+    var caption: String
+
+    init(imageData: Data, createdAt: Date = .now, caption: String = "") {
+        self.imageData = imageData
+        self.createdAt = createdAt
+        self.caption = caption
+    }
+
+    init(attachment: LessonNoteImageAttachment) {
+        imageData = attachment.imageData
+        createdAt = attachment.createdAt
+        caption = attachment.caption
+    }
+}
+
+private enum LessonNoteAttachmentImageProcessor {
+    static func compressedData(from image: UIImage) -> Data? {
+        let maxDimension: CGFloat = 1280
+        let largestDimension = max(image.size.width, image.size.height)
+        let scale = min(maxDimension / largestDimension, 1.0)
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let resizedImage = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return resizedImage.jpegData(compressionQuality: 0.8)
+    }
+}
+
 struct EditSessionNoteView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Drill.title) private var availableDrills: [Drill]
 
     let student: Student?
     let existingNote: LessonSessionNote?
@@ -3062,6 +3260,17 @@ struct EditSessionNoteView: View {
     @State private var problems: String
     @State private var improvements: String
     @State private var generalNotes: String
+    @State private var lessonFocus: String
+    @State private var coachNotes: String
+    @State private var homework: String
+    @State private var drills: String
+    @State private var nextLessonGoal: String
+    @State private var privateCoachJournal: String
+    @State private var attachmentDrafts: [LessonNoteAttachmentDraft]
+    @State private var selectedAttachmentPhoto: PhotosPickerItem?
+    @State private var isTakingAttachmentPhoto = false
+    @State private var selectedAssignedDrills: [Drill]
+    @State private var isSelectingAssignedDrills = false
 
     init(student: Student, defaultDate: Date = .now) {
         self.student = student
@@ -3071,6 +3280,14 @@ struct EditSessionNoteView: View {
         _problems = State(initialValue: "")
         _improvements = State(initialValue: "")
         _generalNotes = State(initialValue: "")
+        _lessonFocus = State(initialValue: "")
+        _coachNotes = State(initialValue: "")
+        _homework = State(initialValue: "")
+        _drills = State(initialValue: "")
+        _nextLessonGoal = State(initialValue: "")
+        _privateCoachJournal = State(initialValue: "")
+        _attachmentDrafts = State(initialValue: [])
+        _selectedAssignedDrills = State(initialValue: [])
     }
 
     init(existingNote: LessonSessionNote) {
@@ -3081,6 +3298,16 @@ struct EditSessionNoteView: View {
         _problems = State(initialValue: existingNote.problems)
         _improvements = State(initialValue: existingNote.improvements)
         _generalNotes = State(initialValue: existingNote.generalNotes)
+        _lessonFocus = State(initialValue: existingNote.lessonFocus)
+        _coachNotes = State(initialValue: existingNote.coachNotes)
+        _homework = State(initialValue: existingNote.homework)
+        _drills = State(initialValue: existingNote.drills)
+        _nextLessonGoal = State(initialValue: existingNote.nextLessonGoal)
+        _privateCoachJournal = State(initialValue: existingNote.privateCoachJournal)
+        _attachmentDrafts = State(initialValue: existingNote.imageAttachments.map {
+            LessonNoteAttachmentDraft(imageData: $0.imageData, createdAt: $0.createdAt, caption: $0.caption)
+        })
+        _selectedAssignedDrills = State(initialValue: existingNote.assignedDrills)
     }
 
     var body: some View {
@@ -3088,6 +3315,104 @@ struct EditSessionNoteView: View {
             Form {
                 Section {
                     DatePicker("Lesson Date", selection: $sessionDate, displayedComponents: .date)
+                }
+
+                Section("Lesson Focus") {
+                    TextField("What was the primary focus of this lesson?", text: $lessonFocus, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Coach Notes") {
+                    TextField("What should the student remember from this lesson?", text: $coachNotes, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Assigned Homework") {
+                    TextField("What should the student practice before the next lesson?", text: $homework, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Drills") {
+                    TextField("Which drills were assigned?", text: $drills, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Assigned Drills") {
+                    if availableDrills.isEmpty {
+                        Text("No drills yet. Create one in Drill Library.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        if selectedAssignedDrills.isEmpty {
+                            Text("No drills assigned.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(selectedAssignedDrills.sorted { $0.title < $1.title }) { drill in
+                                AssignedDrillDisplayCard(drill: drill)
+                            }
+                        }
+
+                        Button {
+                            isSelectingAssignedDrills = true
+                        } label: {
+                            Label("Select Drills", systemImage: "checklist")
+                        }
+                    }
+                }
+
+                Section("Next Lesson Goal") {
+                    TextField("What is the goal for the next lesson?", text: $nextLessonGoal, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Private Coach Journal") {
+                    TextField("Private observations for the coach only", text: $privateCoachJournal, axis: .vertical)
+                        .lineLimit(3...8)
+                    Text("This journal is visible only in the coach app and is never included in student sharing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Attachments") {
+                    PhotosPicker(selection: $selectedAttachmentPhoto, matching: .images) {
+                        Label("Add Screenshot / Image", systemImage: "photo.badge.plus")
+                    }
+
+                    Button {
+                        isTakingAttachmentPhoto = true
+                    } label: {
+                        Label("Take Photo", systemImage: "camera")
+                    }
+                    .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+
+                    ForEach($attachmentDrafts) { $attachment in
+                        HStack(alignment: .top, spacing: 12) {
+                            if let image = UIImage(data: attachment.imageData) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 64, height: 64)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                TextField("Caption (optional)", text: $attachment.caption, axis: .vertical)
+                                    .lineLimit(1...3)
+                                Text(attachment.createdAt, format: .dateTime.month().day().year().hour().minute())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Button(role: .destructive) {
+                                removeAttachment(attachment.id)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Delete Attachment")
+                        }
+                    }
                 }
 
                 Section("Today's Focus") {
@@ -3120,6 +3445,28 @@ struct EditSessionNoteView: View {
                     Button("Save") { save() }
                 }
             }
+            .sheet(isPresented: $isTakingAttachmentPhoto) {
+                CameraImagePicker { image in
+                    addAttachment(image)
+                }
+                .ignoresSafeArea()
+            }
+            .sheet(isPresented: $isSelectingAssignedDrills) {
+                DrillSelectionView(
+                    drills: availableDrills,
+                    selectedDrills: $selectedAssignedDrills
+                )
+            }
+            .onChange(of: selectedAttachmentPhoto) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        addAttachment(image)
+                    }
+                    selectedAttachmentPhoto = nil
+                }
+            }
         }
     }
 
@@ -3130,38 +3477,156 @@ struct EditSessionNoteView: View {
             note.problems = problems
             note.improvements = improvements
             note.generalNotes = generalNotes
+            note.lessonFocus = lessonFocus
+            note.coachNotes = coachNotes
+            note.homework = homework
+            note.drills = drills
+            note.nextLessonGoal = nextLessonGoal
+            note.privateCoachJournal = privateCoachJournal
+            note.assignedDrills = selectedAssignedDrills
+            let replacedAttachments = note.imageAttachments
+            note.imageAttachments = attachmentDrafts.map {
+                LessonNoteImageAttachment(imageData: $0.imageData, createdAt: $0.createdAt, caption: $0.caption)
+            }
+            for attachment in replacedAttachments {
+                modelContext.delete(attachment)
+            }
         } else if let student {
             let note = LessonSessionNote(
                 sessionDate: sessionDate,
                 focus: focus,
                 problems: problems,
                 improvements: improvements,
-                generalNotes: generalNotes
+                generalNotes: generalNotes,
+                lessonFocus: lessonFocus,
+                coachNotes: coachNotes,
+                homework: homework,
+                drills: drills,
+                nextLessonGoal: nextLessonGoal,
+                privateCoachJournal: privateCoachJournal,
+                imageAttachments: attachmentDrafts.map {
+                    LessonNoteImageAttachment(imageData: $0.imageData, createdAt: $0.createdAt, caption: $0.caption)
+                },
+                assignedDrills: selectedAssignedDrills
             )
             student.sessionNotes.append(note)
         }
         dismiss()
     }
+
+    private func addAttachment(_ image: UIImage) {
+        guard let imageData = LessonNoteAttachmentImageProcessor.compressedData(from: image) else { return }
+        attachmentDrafts.append(LessonNoteAttachmentDraft(imageData: imageData))
+    }
+
+    private func removeAttachment(_ id: UUID) {
+        attachmentDrafts.removeAll { $0.id == id }
+    }
+}
+
+struct DrillSelectionView: View {
+    @Environment(\.dismiss) private var dismiss
+    let drills: [Drill]
+    @Binding var selectedDrills: [Drill]
+    @State private var searchText = ""
+
+    private var filteredDrills: [Drill] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return drills }
+        return drills.filter {
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            $0.category.localizedCaseInsensitiveContains(query) ||
+            $0.purpose.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if drills.isEmpty {
+                    ContentUnavailableView(
+                        "No Drills",
+                        systemImage: "list.bullet.clipboard",
+                        description: Text("No drills yet. Create one in Drill Library.")
+                    )
+                } else if filteredDrills.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    ForEach(filteredDrills.sorted { $0.title < $1.title }) { drill in
+                        Button {
+                            toggleAssignedDrill(drill)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(drill.title)
+                                        .foregroundStyle(.primary)
+                                    if !drill.category.isEmpty {
+                                        Text(drill.category)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if isDrillAssigned(drill) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("Select Drills")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Search Drills")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func isDrillAssigned(_ drill: Drill) -> Bool {
+        selectedDrills.contains { $0.persistentModelID == drill.persistentModelID }
+    }
+
+    private func toggleAssignedDrill(_ drill: Drill) {
+        if isDrillAssigned(drill) {
+            selectedDrills.removeAll { $0.persistentModelID == drill.persistentModelID }
+        } else {
+            selectedDrills.append(drill)
+        }
+    }
 }
 
 struct SessionNoteShareView: View {
+    private enum MediaShareAlert: Identifiable {
+        case missingVideo
+        case largeVideo([URL])
+
+        var id: String {
+            switch self {
+            case .missingVideo:
+                return "missingVideo"
+            case .largeVideo:
+                return "largeVideo"
+            }
+        }
+    }
+
     let note: LessonSessionNote
     let studentName: String
+    let studentEmail: String
     @Environment(\.dismiss) private var dismiss
+    @State private var isShowingEmailComposer = false
+    @State private var emailStatusMessage: String?
+    @State private var isShowingEmailStatus = false
+    @State private var mediaShareAlert: MediaShareAlert?
 
     var formattedText: String {
-        let dateStr = note.sessionDate.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
-        let greeting = studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Hi" : "Hi \(studentName.trimmingCharacters(in: .whitespacesAndNewlines))"
-        var parts: [String] = [
-            "Golf Lesson Summary — \(dateStr)",
-            "\(greeting), here are your notes from today's lesson."
-        ]
-        if !note.focus.isEmpty { parts.append("TODAY'S FOCUS\n\(note.focus)") }
-        if !note.problems.isEmpty { parts.append("PROBLEM AREAS\n\(note.problems)") }
-        if !note.improvements.isEmpty { parts.append("AREAS TO IMPROVE\n\(note.improvements)") }
-        if !note.generalNotes.isEmpty { parts.append("ADDITIONAL NOTES\n\(note.generalNotes)") }
-        return parts.joined(separator: "\n\n")
+        StudentLessonSummaryFormatter.summary(for: note, studentName: studentName)
     }
 
     var body: some View {
@@ -3177,29 +3642,134 @@ struct SessionNoteShareView: View {
 
                 Divider()
 
-                Button {
-                    presentShareSheet()
-                } label: {
-                    Label("Send Notes", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity)
+                VStack(spacing: 10) {
+                    Button {
+                        emailLessonSummary()
+                    } label: {
+                        Label("Email Lesson Summary to Student", systemImage: "envelope")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        presentShareSheet(includeMedia: false)
+                    } label: {
+                        Label("Share Summary", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        shareSummaryWithMedia()
+                    } label: {
+                        Label("Share Summary + Media", systemImage: "photo.on.rectangle.angled")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.borderedProminent)
                 .padding()
             }
-            .navigationTitle("Share Lesson Notes")
+            .navigationTitle("Lesson Summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $isShowingEmailComposer) {
+                LessonEmailComposerView(
+                    recipients: [studentEmail.trimmingCharacters(in: .whitespacesAndNewlines)],
+                    subject: String(localized: "Golf Lesson Summary"),
+                    body: formattedText,
+                    imageAttachments: note.imageAttachments
+                        .sorted { $0.createdAt < $1.createdAt }
+                        .map(\.imageData),
+                    onFinish: { message in
+                        if let message {
+                            emailStatusMessage = message
+                            isShowingEmailStatus = true
+                        }
+                    }
+                )
+            }
+            .alert("Lesson Summary Email", isPresented: $isShowingEmailStatus, presenting: emailStatusMessage) { _ in
+                Button("OK", role: .cancel) { }
+            } message: { message in
+                Text(message)
+            }
+            .alert(item: $mediaShareAlert) { alert in
+                switch alert {
+                case .missingVideo:
+                    return Alert(
+                        title: Text("Unable to Share Drill Video"),
+                        message: Text("Drill video file is missing or could not be shared."),
+                        dismissButton: .default(Text("OK"))
+                    )
+                case .largeVideo(let videoURLs):
+                    return Alert(
+                        title: Text("Large Video File"),
+                        message: Text("This video may be too large for Email. Try WhatsApp, AirDrop, or Messages."),
+                        primaryButton: .default(Text("Continue to Share")) {
+                            presentShareSheet(includeMedia: true, videoURLs: videoURLs)
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
+            }
         }
     }
 
-    private func presentShareSheet() {
+    private func emailLessonSummary() {
+        let recipient = studentEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !recipient.isEmpty else {
+            emailStatusMessage = String(localized: "No email address is saved for \(studentName).")
+            isShowingEmailStatus = true
+            return
+        }
+
+        guard MFMailComposeViewController.canSendMail() else {
+            emailStatusMessage = String(localized: "This device cannot send email. Set up Mail on an iPhone and try again.")
+            isShowingEmailStatus = true
+            return
+        }
+
+        isShowingEmailComposer = true
+    }
+
+    private func shareSummaryWithMedia() {
+        let videoFileNames = note.assignedDrills.compactMap { drill -> String? in
+            guard let fileName = drill.demoVideoFileName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !fileName.isEmpty else {
+                return nil
+            }
+            return fileName
+        }
+        let videoURLs = videoFileNames.compactMap(VideoFileStore.storedVideoURL(fileName:))
+
+        guard videoURLs.count == videoFileNames.count else {
+            mediaShareAlert = .missingVideo
+            return
+        }
+
+        if totalFileSize(of: videoURLs) > 20 * 1024 * 1024 {
+            mediaShareAlert = .largeVideo(videoURLs)
+        } else {
+            presentShareSheet(includeMedia: true, videoURLs: videoURLs)
+        }
+    }
+
+    private func presentShareSheet(includeMedia: Bool, videoURLs: [URL] = []) {
         let image = renderNotesAsImage(formattedText)
         let source = NoteShareItemSource(text: formattedText, image: image)
-        let controller = UIActivityViewController(activityItems: [source], applicationActivities: nil)
+        var activityItems: [Any] = [source]
+        if includeMedia {
+            let images = note.imageAttachments
+                .sorted { $0.createdAt < $1.createdAt }
+                .compactMap { UIImage(data: $0.imageData) }
+            activityItems.append(contentsOf: images)
+            activityItems.append(contentsOf: videoURLs)
+        }
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootVC = scene.windows.first?.rootViewController else { return }
         var topVC = rootVC
@@ -3212,6 +3782,13 @@ struct SessionNoteShareView: View {
             popover.permittedArrowDirections = []
         }
         topVC.present(controller, animated: true)
+    }
+
+    private func totalFileSize(of urls: [URL]) -> Int {
+        urls.reduce(0) { total, url in
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+            return total + (values?.fileSize ?? 0)
+        }
     }
 
     private func renderNotesAsImage(_ text: String) -> UIImage {
@@ -3344,6 +3921,349 @@ struct EditVideoView: View {
     private func emptyToNil(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+struct DrillLibraryView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Drill.title) private var drills: [Drill]
+    @Query private var students: [Student]
+    @State private var searchText = ""
+    @State private var isAddingDrill = false
+    @State private var drillForEditing: Drill?
+    @State private var drillPendingDeletion: Drill?
+
+    private var filteredDrills: [Drill] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return drills }
+        return drills.filter {
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            $0.category.localizedCaseInsensitiveContains(query) ||
+            $0.purpose.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var groupedDrills: [(category: String, drills: [Drill])] {
+        Dictionary(grouping: filteredDrills) {
+            let category = $0.category.trimmingCharacters(in: .whitespacesAndNewlines)
+            return category.isEmpty ? String(localized: "Uncategorized") : category
+        }
+        .map { ($0.key, $0.value.sorted { $0.title < $1.title }) }
+        .sorted { $0.category.localizedCaseInsensitiveCompare($1.category) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if filteredDrills.isEmpty {
+                    ContentUnavailableView(
+                        searchText.isEmpty ? "No Drills" : "No Matching Drills",
+                        systemImage: "list.bullet.clipboard",
+                        description: Text("Create reusable drills to assign as lesson homework.")
+                    )
+                } else {
+                    ForEach(groupedDrills, id: \.category) { group in
+                        Section(group.category) {
+                            ForEach(group.drills) { drill in
+                                DrillLibraryRow(drill: drill) {
+                                    drillForEditing = drill
+                                } onDelete: {
+                                    drillPendingDeletion = drill
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Drill Library")
+            .searchable(text: $searchText, prompt: "Search Drills")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isAddingDrill = true
+                    } label: {
+                        Label("Add Drill", systemImage: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $isAddingDrill) {
+                EditDrillView()
+            }
+            .sheet(item: $drillForEditing) { drill in
+                EditDrillView(drill: drill)
+            }
+            .alert("Delete Drill", isPresented: Binding(
+                get: { drillPendingDeletion != nil },
+                set: { if !$0 { drillPendingDeletion = nil } }
+            ), presenting: drillPendingDeletion) { drill in
+                Button("Delete", role: .destructive) {
+                    deleteDrill(drill)
+                }
+                Button("Cancel", role: .cancel) {
+                    drillPendingDeletion = nil
+                }
+            } message: { drill in
+                Text("Delete \(drill.title)? It will be removed from assigned lesson notes.")
+            }
+        }
+    }
+
+    private func deleteDrill(_ drill: Drill) {
+        for student in students {
+            for note in student.sessionNotes {
+                note.assignedDrills.removeAll { $0.persistentModelID == drill.persistentModelID }
+            }
+        }
+        VideoFileStore.deleteStoredVideoFile(fileName: drill.demoVideoFileName)
+        modelContext.delete(drill)
+        drillPendingDeletion = nil
+    }
+}
+
+struct DrillLibraryRow: View {
+    let drill: Drill
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            if let imageData = drill.imageData, let image = UIImage(data: imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image(systemName: "figure.golf")
+                    .font(.title3)
+                    .frame(width: 52, height: 52)
+                    .background(.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(drill.title.isEmpty ? String(localized: "Untitled Drill") : drill.title)
+                    .font(.headline)
+                if !drill.purpose.isEmpty {
+                    Text(drill.purpose)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                if drill.demoVideoFileName != nil {
+                    Label("Demo Video Attached", systemImage: "video")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Menu {
+                Button("Edit", action: onEdit)
+                Button("Delete", role: .destructive, action: onDelete)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct DrillVideoImport: Transferable {
+    let storedURL: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { receivedFile in
+            let storedURL = try VideoFileStore.copyVideo(from: receivedFile.file)
+            return DrillVideoImport(storedURL: storedURL)
+        }
+    }
+}
+
+struct EditDrillView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let drill: Drill?
+    @State private var title: String
+    @State private var category: String
+    @State private var purpose: String
+    @State private var instructions: String
+    @State private var recommendedReps: String
+    @State private var coachTips: String
+    @State private var pendingDemoVideoFileName: String?
+    @State private var imageData: Data?
+    @State private var selectedVideoItem: PhotosPickerItem?
+    @State private var selectedImageItem: PhotosPickerItem?
+    @State private var mediaError: String?
+    @State private var isImportingDemoVideo = false
+
+    init(drill: Drill? = nil) {
+        self.drill = drill
+        _title = State(initialValue: drill?.title ?? "")
+        _category = State(initialValue: drill?.category ?? "")
+        _purpose = State(initialValue: drill?.purpose ?? "")
+        _instructions = State(initialValue: drill?.instructions ?? "")
+        _recommendedReps = State(initialValue: drill?.recommendedReps ?? "")
+        _coachTips = State(initialValue: drill?.coachTips ?? "")
+        _pendingDemoVideoFileName = State(initialValue: drill?.demoVideoFileName)
+        _imageData = State(initialValue: drill?.imageData)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Drill Information") {
+                    TextField("Title", text: $title)
+                    TextField("Category", text: $category)
+                    TextField("Purpose", text: $purpose, axis: .vertical)
+                        .lineLimit(2...5)
+                    TextField("Recommended Reps", text: $recommendedReps)
+                }
+
+                Section("Instructions") {
+                    TextField("Instructions", text: $instructions, axis: .vertical)
+                        .lineLimit(3...8)
+                    TextField("Coach Tips", text: $coachTips, axis: .vertical)
+                        .lineLimit(2...6)
+                }
+
+                Section("Demo Media") {
+                    PhotosPicker(
+                        selection: $selectedVideoItem,
+                        matching: .videos,
+                        preferredItemEncoding: .current
+                    ) {
+                        Label("Attach Demo Video", systemImage: "video.badge.plus")
+                    }
+                    if isImportingDemoVideo {
+                        ProgressView("Importing Demo Video...")
+                    }
+                    if let demoVideoURL {
+                        VideoPlayer(player: AVPlayer(url: demoVideoURL))
+                            .frame(height: 190)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        Label("Demo Video Attached", systemImage: "checkmark.circle")
+                            .foregroundStyle(.secondary)
+                        Button("Remove Demo Video", role: .destructive) {
+                            clearPendingDemoVideo()
+                        }
+                    }
+
+                    PhotosPicker(selection: $selectedImageItem, matching: .images) {
+                        Label("Attach Drill Image", systemImage: "photo.badge.plus")
+                    }
+                    if let imageData, let image = UIImage(data: imageData) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        Button("Remove Image", role: .destructive) {
+                            self.imageData = nil
+                        }
+                    }
+
+                    if let mediaError {
+                        Text(mediaError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle(drill == nil ? "New Drill" : "Edit Drill")
+            .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled(hasUnsavedImportedVideo)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        discardImportedVideoIfNeeded()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        save()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onChange(of: selectedVideoItem) { _, item in
+                guard let item else { return }
+                Task {
+                    isImportingDemoVideo = true
+                    mediaError = nil
+                    do {
+                        guard let importedVideo = try await item.loadTransferable(type: DrillVideoImport.self) else {
+                            throw CocoaError(.fileReadUnknown)
+                        }
+                        replacePendingDemoVideo(with: VideoFileStore.persistedFileName(for: importedVideo.storedURL))
+                    } catch {
+                        mediaError = error.localizedDescription
+                    }
+                    isImportingDemoVideo = false
+                    selectedVideoItem = nil
+                }
+            }
+            .onChange(of: selectedImageItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        imageData = LessonNoteAttachmentImageProcessor.compressedData(from: image)
+                    }
+                    selectedImageItem = nil
+                }
+            }
+        }
+    }
+
+    private var hasUnsavedImportedVideo: Bool {
+        pendingDemoVideoFileName != drill?.demoVideoFileName
+    }
+
+    private var demoVideoURL: URL? {
+        guard let pendingDemoVideoFileName else { return nil }
+        return VideoFileStore.storedVideoURL(fileName: pendingDemoVideoFileName)
+    }
+
+    private func replacePendingDemoVideo(with fileName: String) {
+        if let pendingDemoVideoFileName, pendingDemoVideoFileName != drill?.demoVideoFileName {
+            VideoFileStore.deleteStoredVideoFile(fileName: pendingDemoVideoFileName)
+        }
+        pendingDemoVideoFileName = fileName
+    }
+
+    private func clearPendingDemoVideo() {
+        if let pendingDemoVideoFileName, pendingDemoVideoFileName != drill?.demoVideoFileName {
+            VideoFileStore.deleteStoredVideoFile(fileName: pendingDemoVideoFileName)
+        }
+        pendingDemoVideoFileName = nil
+    }
+
+    private func discardImportedVideoIfNeeded() {
+        if let pendingDemoVideoFileName, pendingDemoVideoFileName != drill?.demoVideoFileName {
+            VideoFileStore.deleteStoredVideoFile(fileName: pendingDemoVideoFileName)
+        }
+    }
+
+    private func save() {
+        let oldVideoFileName = drill?.demoVideoFileName
+        let savedDrill = drill ?? Drill()
+        savedDrill.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        savedDrill.category = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        savedDrill.purpose = purpose
+        savedDrill.instructions = instructions
+        savedDrill.recommendedReps = recommendedReps
+        savedDrill.coachTips = coachTips
+        savedDrill.demoVideoFileName = pendingDemoVideoFileName
+        savedDrill.imageData = imageData
+
+        if drill == nil {
+            modelContext.insert(savedDrill)
+        } else if oldVideoFileName != pendingDemoVideoFileName {
+            VideoFileStore.deleteStoredVideoFile(fileName: oldVideoFileName)
+        }
+        dismiss()
     }
 }
 
@@ -6322,8 +7242,23 @@ struct LessonEmailComposerView: UIViewControllerRepresentable {
     let recipients: [String]
     let subject: String
     let body: String
+    let imageAttachments: [Data]
     let onFinish: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
+
+    init(
+        recipients: [String],
+        subject: String,
+        body: String,
+        imageAttachments: [Data] = [],
+        onFinish: @escaping (String?) -> Void
+    ) {
+        self.recipients = recipients
+        self.subject = subject
+        self.body = body
+        self.imageAttachments = imageAttachments
+        self.onFinish = onFinish
+    }
 
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let controller = MFMailComposeViewController()
@@ -6331,6 +7266,13 @@ struct LessonEmailComposerView: UIViewControllerRepresentable {
         controller.setToRecipients(recipients)
         controller.setSubject(subject)
         controller.setMessageBody(body, isHTML: false)
+        for (index, data) in imageAttachments.enumerated() {
+            controller.addAttachmentData(
+                data,
+                mimeType: "image/jpeg",
+                fileName: "swing-screenshot-\(index + 1).jpg"
+            )
+        }
         return controller
     }
 
@@ -6700,6 +7642,14 @@ struct LessonSessionNoteBackupRecord: Codable {
     let problems: String
     let improvements: String
     let generalNotes: String
+    let lessonFocus: String?
+    let coachNotes: String?
+    let homework: String?
+    let drills: String?
+    let nextLessonGoal: String?
+    let privateCoachJournal: String?
+    let imageAttachments: [LessonNoteImageAttachmentBackupRecord]?
+    let assignedDrills: [DrillBackupRecord]?
 
     init(note: LessonSessionNote) {
         sessionDate = note.sessionDate
@@ -6707,6 +7657,32 @@ struct LessonSessionNoteBackupRecord: Codable {
         problems = note.problems
         improvements = note.improvements
         generalNotes = note.generalNotes
+        lessonFocus = note.lessonFocus
+        coachNotes = note.coachNotes
+        homework = note.homework
+        drills = note.drills
+        nextLessonGoal = note.nextLessonGoal
+        privateCoachJournal = note.privateCoachJournal
+        imageAttachments = note.imageAttachments.map {
+            LessonNoteImageAttachmentBackupRecord(
+                imageData: $0.imageData,
+                createdAt: $0.createdAt,
+                caption: $0.caption
+            )
+        }
+        assignedDrills = note.assignedDrills.map {
+            DrillBackupRecord(
+                title: $0.title,
+                category: $0.category,
+                purpose: $0.purpose,
+                instructions: $0.instructions,
+                recommendedReps: $0.recommendedReps,
+                coachTips: $0.coachTips,
+                createdAt: $0.createdAt,
+                demoVideoFileName: $0.demoVideoFileName,
+                imageData: $0.imageData
+            )
+        }
     }
 
     func makeNote() -> LessonSessionNote {
@@ -6715,7 +7691,67 @@ struct LessonSessionNoteBackupRecord: Codable {
             focus: focus,
             problems: problems,
             improvements: improvements,
-            generalNotes: generalNotes
+            generalNotes: generalNotes,
+            lessonFocus: lessonFocus ?? "",
+            coachNotes: coachNotes ?? "",
+            homework: homework ?? "",
+            drills: drills ?? "",
+            nextLessonGoal: nextLessonGoal ?? "",
+            privateCoachJournal: privateCoachJournal ?? "",
+            imageAttachments: imageAttachments?.map { $0.makeAttachment() } ?? [],
+            assignedDrills: assignedDrills?.map { $0.makeDrill() } ?? []
+        )
+    }
+}
+
+struct LessonNoteImageAttachmentBackupRecord: Codable {
+    let imageData: Data
+    let createdAt: Date
+    let caption: String
+
+    init(attachment: LessonNoteImageAttachment) {
+        imageData = attachment.imageData
+        createdAt = attachment.createdAt
+        caption = attachment.caption
+    }
+
+    init(imageData: Data, createdAt: Date, caption: String) {
+        self.imageData = imageData
+        self.createdAt = createdAt
+        self.caption = caption
+    }
+
+    func makeAttachment() -> LessonNoteImageAttachment {
+        LessonNoteImageAttachment(
+            imageData: imageData,
+            createdAt: createdAt,
+            caption: caption
+        )
+    }
+}
+
+struct DrillBackupRecord: Codable {
+    let title: String
+    let category: String
+    let purpose: String
+    let instructions: String
+    let recommendedReps: String
+    let coachTips: String
+    let createdAt: Date
+    let demoVideoFileName: String?
+    let imageData: Data?
+
+    func makeDrill() -> Drill {
+        Drill(
+            title: title,
+            category: category,
+            purpose: purpose,
+            instructions: instructions,
+            recommendedReps: recommendedReps,
+            coachTips: coachTips,
+            createdAt: createdAt,
+            demoVideoFileName: demoVideoFileName,
+            imageData: imageData
         )
     }
 }
@@ -6980,7 +8016,7 @@ enum VideoFileStore {
         return destination
     }
 
-    static func copyVideo(from url: URL) throws -> URL {
+    nonisolated static func copyVideo(from url: URL) throws -> URL {
         let destination = try makeDestinationURL(fileExtension: url.pathExtension.isEmpty ? "mov" : url.pathExtension)
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
@@ -6998,7 +8034,33 @@ enum VideoFileStore {
         try? FileManager.default.removeItem(at: url)
     }
 
-    static func makeDestinationURL(fileExtension: String) throws -> URL {
+    static func deleteStoredVideoFile(fileName: String?) {
+        guard let fileName,
+              let url = storedVideoURL(fileName: fileName),
+              isAppStoredVideo(url) else {
+            return
+        }
+
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    nonisolated static func storedVideoURL(fileName: String) -> URL? {
+        guard let documents = try? FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else {
+            return nil
+        }
+
+        let url = documents
+            .appending(path: "GolfCoachVideos", directoryHint: .isDirectory)
+            .appending(path: fileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    nonisolated static func makeDestinationURL(fileExtension: String) throws -> URL {
         let documents = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let directory = documents.appending(path: "GolfCoachVideos", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

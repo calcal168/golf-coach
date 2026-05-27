@@ -417,18 +417,90 @@ final class LessonSessionNote {
     var problems: String
     var improvements: String
     var generalNotes: String
+    var lessonFocus: String = ""
+    var coachNotes: String = ""
+    var homework: String = ""
+    var drills: String = ""
+    var nextLessonGoal: String = ""
+    var privateCoachJournal: String = ""
+    @Relationship(deleteRule: .cascade) var imageAttachments: [LessonNoteImageAttachment] = []
+    @Relationship var assignedDrills: [Drill] = []
 
     init(
         sessionDate: Date = .now,
         focus: String = "",
         problems: String = "",
         improvements: String = "",
-        generalNotes: String = ""
+        generalNotes: String = "",
+        lessonFocus: String = "",
+        coachNotes: String = "",
+        homework: String = "",
+        drills: String = "",
+        nextLessonGoal: String = "",
+        privateCoachJournal: String = "",
+        imageAttachments: [LessonNoteImageAttachment] = [],
+        assignedDrills: [Drill] = []
     ) {
         self.sessionDate = sessionDate
         self.focus = focus
         self.problems = problems
         self.improvements = improvements
         self.generalNotes = generalNotes
+        self.lessonFocus = lessonFocus
+        self.coachNotes = coachNotes
+        self.homework = homework
+        self.drills = drills
+        self.nextLessonGoal = nextLessonGoal
+        self.privateCoachJournal = privateCoachJournal
+        self.imageAttachments = imageAttachments
+        self.assignedDrills = assignedDrills
+    }
+}
+
+@Model
+final class LessonNoteImageAttachment {
+    var imageData: Data
+    var createdAt: Date
+    var caption: String
+
+    init(imageData: Data, createdAt: Date = .now, caption: String = "") {
+        self.imageData = imageData
+        self.createdAt = createdAt
+        self.caption = caption
+    }
+}
+
+@Model
+final class Drill {
+    var title: String
+    var category: String
+    var purpose: String
+    var instructions: String
+    var recommendedReps: String
+    var coachTips: String
+    var createdAt: Date
+    var demoVideoFileName: String?
+    var imageData: Data?
+
+    init(
+        title: String = "",
+        category: String = "",
+        purpose: String = "",
+        instructions: String = "",
+        recommendedReps: String = "",
+        coachTips: String = "",
+        createdAt: Date = .now,
+        demoVideoFileName: String? = nil,
+        imageData: Data? = nil
+    ) {
+        self.title = title
+        self.category = category
+        self.purpose = purpose
+        self.instructions = instructions
+        self.recommendedReps = recommendedReps
+        self.coachTips = coachTips
+        self.createdAt = createdAt
+        self.demoVideoFileName = demoVideoFileName
+        self.imageData = imageData
     }
 }

@@ -1,446 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Unable to prepare account statement because %@ has no email address on file." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@의 이메일 주소가 등록되어 있지 않아 계정 명세서를 준비할 수 없습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 没有登记电子邮件地址，因此无法准备账户对账单。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 沒有登記電子郵件地址，因此無法準備帳戶明細。"
-          }
-        }
-      }
-    },
-    "This device cannot send email. Set up Mail on an iPhone and try again." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
-          }
-        }
-      }
-    },
-    "Payment saved, but %@ has no email address on file." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "결제가 저장되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "付款已保存，但 %@ 没有登记电子邮件地址。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "付款已儲存，但 %@ 沒有登記電子郵件地址。"
-          }
-        }
-      }
-    },
-    "Payment saved, but this device cannot send email. Set up Mail on an iPhone and try again." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "결제가 저장되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "付款已保存，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "付款已儲存，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
-          }
-        }
-      }
-    },
-    "Session charge saved, but %@ has no email address on file." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "레슨 비용이 저장되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "课程费用已保存，但 %@ 没有登记电子邮件地址。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "課程費用已儲存，但 %@ 沒有登記電子郵件地址。"
-          }
-        }
-      }
-    },
-    "Session charge saved, but this device cannot send email. Set up Mail on an iPhone and try again." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "레슨 비용이 저장되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "课程费用已保存，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "課程費用已儲存，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
-          }
-        }
-      }
-    },
-    "Lesson fee restored, but %@ has no email address on file." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "레슨 비용이 복원되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "课程费用已恢复，但 %@ 没有登记电子邮件地址。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "課程費用已恢復，但 %@ 沒有登記電子郵件地址。"
-          }
-        }
-      }
-    },
-    "Lesson fee restored, but this device cannot send email. Set up Mail on an iPhone and try again." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "레슨 비용이 복원되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "课程费用已恢复，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "課程費用已恢復，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
-          }
-        }
-      }
-    },
-    "Email failed to send: %@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이메일 전송 실패: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "电子邮件发送失败：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "電子郵件傳送失敗：%@"
-          }
-        }
-      }
-    },
-    "Email sent." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이메일을 보냈습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "电子邮件已发送。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "電子郵件已傳送。"
-          }
-        }
-      }
-    },
-    "Email saved as draft." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이메일이 임시 보관함에 저장되었습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "电子邮件已保存为草稿。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "電子郵件已儲存為草稿。"
-          }
-        }
-      }
-    },
-    "Email failed to send." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이메일을 보내지 못했습니다."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "电子邮件发送失败。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "電子郵件傳送失敗。"
-          }
-        }
-      }
-    },
-    "The whole payment package has been deleted. Would you like to email the updated account statement to %@?" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "전체 결제 패키지가 삭제되었습니다. 업데이트된 계정 명세서를 %@에게 이메일로 보내시겠습니까?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "整个付款套餐已删除。是否要将更新后的账户对账单通过电子邮件发送给 %@？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "整個付款套票已刪除。是否要將更新後的帳戶明細以電子郵件傳送給 %@？"
-          }
-        }
-      }
-    },
-    "Single Lesson" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "단일 레슨"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单节课"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "單堂課"
-          }
-        }
-      }
-    },
-    "5-Lesson Package" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "5회 레슨 패키지"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "5节课套餐"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "5堂課套票"
-          }
-        }
-      }
-    },
-    "10-Lesson Package" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10회 레슨 패키지"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10节课套餐"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10堂課套票"
-          }
-        }
-      }
-    },
-    "Custom Package" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "맞춤 패키지"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自定义套餐"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自訂套票"
-          }
-        }
-      }
-    },
-    "Credit Card" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "신용카드"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "信用卡"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "信用卡"
-          }
-        }
-      }
-    },
-    "Debit" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "직불카드"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "借记卡"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "金融卡"
-          }
-        }
-      }
-    },
-    "Cash" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "현금"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "现金"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "現金"
-          }
-        }
-      }
-    },
     "" : {
 
     },
@@ -701,6 +261,50 @@
         }
       }
     },
+    "5-Lesson Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5회 레슨 패키지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5节课套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5堂課套票"
+          }
+        }
+      }
+    },
+    "10-Lesson Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10회 레슨 패키지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10节课套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10堂課套票"
+          }
+        }
+      }
+    },
     "Academy" : {
       "localizations" : {
         "ko" : {
@@ -837,6 +441,10 @@
         }
       }
     },
+    "Add Drill" : {
+      "comment" : "A button that adds a new drill.",
+      "isCommentAutoGenerated" : true
+    },
     "Add Lesson Notes" : {
       "comment" : "A button that adds a note to a lesson.",
       "isCommentAutoGenerated" : true,
@@ -901,6 +509,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增付款 / 課程套組"
+          }
+        }
+      }
+    },
+    "Add Screenshot / Image" : {
+      "comment" : "A button that adds a photo from the user's photo library.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스크린샷 / 이미지 추가"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加截图 / 图片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增截圖 / 圖片"
           }
         }
       }
@@ -1006,16 +638,16 @@
             "value" : "분석 정보"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分析資訊"
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "分析信息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分析資訊"
           }
         }
       }
@@ -1222,6 +854,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "改進方向"
+          }
+        }
+      }
+    },
+    "Assigned Drills" : {
+      "comment" : "A heading displayed above a list of assigned drills.",
+      "isCommentAutoGenerated" : true
+    },
+    "Assigned Homework" : {
+      "comment" : "\"Assigned Homework\" is a term used to describe tasks or exercises that a student is assigned to complete.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지정 과제"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "布置的作业"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指定作業"
+          }
+        }
+      }
+    },
+    "Attach Demo Video" : {
+      "comment" : "A button that allows the user to attach a demo video.",
+      "isCommentAutoGenerated" : true
+    },
+    "Attach Drill Image" : {
+      "comment" : "A button that lets the user attach an image to a drill.",
+      "isCommentAutoGenerated" : true
+    },
+    "Attachments" : {
+      "comment" : "A section for adding and removing attachments to a note.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "첨부 이미지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附件"
           }
         }
       }
@@ -1498,6 +1190,30 @@
         }
       }
     },
+    "Caption (optional)" : {
+      "comment" : "A label for the caption of an attachment.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설명 (선택 사항)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说明（可选）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說明（選填）"
+          }
+        }
+      }
+    },
     "Capture or import videos from a student profile." : {
       "localizations" : {
         "ko" : {
@@ -1563,6 +1279,32 @@
           }
         }
       }
+    },
+    "Cash" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현금"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现金"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現金"
+          }
+        }
+      }
+    },
+    "Category" : {
+      "comment" : "A label for the category of a drill.",
+      "isCommentAutoGenerated" : true
     },
     "Charge Amount" : {
       "localizations" : {
@@ -1697,6 +1439,34 @@
           }
         }
       }
+    },
+    "Coach Notes" : {
+      "comment" : "Label for a note field that lists the focus of the lesson.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "코치 노트"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教练笔记"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教練筆記"
+          }
+        }
+      }
+    },
+    "Coach Tips" : {
+      "comment" : "\"Reps\" is a colloquial term for \"repetitions\" or \"exercises\".",
+      "isCommentAutoGenerated" : true
     },
     "Color" : {
       "comment" : "A label for the color picker in the drawing tool palette.",
@@ -1861,6 +1631,30 @@
         }
       }
     },
+    "Continue to Share" : {
+      "comment" : "A button that can be used to continue sharing a video.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 계속하기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续分享"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續分享"
+          }
+        }
+      }
+    },
     "Copy Notes" : {
       "comment" : "A button that copies the notes to the clipboard.",
       "isCommentAutoGenerated" : true,
@@ -1909,6 +1703,10 @@
         }
       }
     },
+    "Create reusable drills to assign as lesson homework." : {
+      "comment" : "A description of the drill library.",
+      "isCommentAutoGenerated" : true
+    },
     "Credit" : {
       "localizations" : {
         "ko" : {
@@ -1927,6 +1725,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "課程餘額"
+          }
+        }
+      }
+    },
+    "Credit Card" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "신용카드"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信用卡"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信用卡"
           }
         }
       }
@@ -1950,6 +1770,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目前揮桿問題與目標"
+          }
+        }
+      }
+    },
+    "Custom Package" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "맞춤 패키지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自訂套票"
           }
         }
       }
@@ -2022,6 +1864,28 @@
         }
       }
     },
+    "Debit" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직불카드"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "借记卡"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "金融卡"
+          }
+        }
+      }
+    },
     "Deduct a Lesson" : {
       "comment" : "A title for a button that deducts a lesson from a student.",
       "extractionState" : "stale",
@@ -2080,16 +1944,44 @@
             "value" : "삭제"
           }
         },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除"
+          }
+        },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除"
           }
+        }
+      }
+    },
+    "Delete %@? It will be removed from assigned lesson notes." : {
+      "comment" : "A confirmation dialog asking the user to confirm the deletion of a drill.",
+      "isCommentAutoGenerated" : true
+    },
+    "Delete Attachment" : {
+      "comment" : "A button that deletes an attachment.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "첨부 이미지 삭제"
+          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除"
+            "value" : "删除附件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除附件"
           }
         }
       }
@@ -2115,6 +2007,10 @@
           }
         }
       }
+    },
+    "Delete Drill" : {
+      "comment" : "A title for a confirmation alert that deletes a drill.",
+      "isCommentAutoGenerated" : true
     },
     "Delete Lesson Notes" : {
       "localizations" : {
@@ -2252,6 +2148,14 @@
         }
       }
     },
+    "Demo Media" : {
+      "comment" : "A section that allows users to upload a demo video and an image for a drill.",
+      "isCommentAutoGenerated" : true
+    },
+    "Demo Video Attached" : {
+      "comment" : "A label that describes a drill's demo video.",
+      "isCommentAutoGenerated" : true
+    },
     "Done" : {
       "localizations" : {
         "ko" : {
@@ -2336,6 +2240,62 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "繪圖工具"
+          }
+        }
+      }
+    },
+    "Drill Information" : {
+      "comment" : "A section of the drill edit view that contains the drill's title, category, purpose, and instructions.",
+      "isCommentAutoGenerated" : true
+    },
+    "Drill Library" : {
+      "comment" : "A heading for a view that displays a list of drills.",
+      "isCommentAutoGenerated" : true
+    },
+    "Drill video file is missing or could not be shared." : {
+      "comment" : "A message displayed when a video file is missing or cannot be shared.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "드릴 동영상 파일이 없거나 공유할 수 없습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "训练视频文件缺失或无法分享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訓練影片檔案遺失或無法分享。"
+          }
+        }
+      }
+    },
+    "Drills" : {
+      "comment" : "\"Drills\" is a term used to describe exercises or activities that are part of a lesson.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "훈련 드릴"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "练习项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "練習項目"
           }
         }
       }
@@ -2515,19 +2475,23 @@
             "value" : "분석 편집"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "編輯分析"
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑分析"
           }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯分析"
+          }
         }
       }
+    },
+    "Edit Drill" : {
+      "comment" : "A screen for editing a drill.",
+      "isCommentAutoGenerated" : true
     },
     "Edit Lesson Notes" : {
       "comment" : "A title for a view that allows editing notes for a lesson.",
@@ -2661,6 +2625,118 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "以郵件傳送 Excel 檔案"
+          }
+        }
+      }
+    },
+    "Email failed to send: %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일 전송 실패: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件发送失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件傳送失敗：%@"
+          }
+        }
+      }
+    },
+    "Email failed to send." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일을 보내지 못했습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件发送失败。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件傳送失敗。"
+          }
+        }
+      }
+    },
+    "Email Lesson Summary to Student" : {
+      "comment" : "A button that emails a lesson summary to the student.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "학생에게 레슨 요약 이메일 보내기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将课程总结通过电子邮件发送给学生"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以電子郵件將課程摘要傳送給學生"
+          }
+        }
+      }
+    },
+    "Email saved as draft." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일이 임시 보관함에 저장되었습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件已保存为草稿。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件已儲存為草稿。"
+          }
+        }
+      }
+    },
+    "Email sent." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이메일을 보냈습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子邮件已发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子郵件已傳送。"
           }
         }
       }
@@ -3056,6 +3132,30 @@
         }
       }
     },
+    "Golf Lesson Summary" : {
+      "comment" : "A multi-line string that summarizes a golf lesson for a student.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "골프 레슨 요약"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高尔夫课程总结"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高爾夫課程摘要"
+          }
+        }
+      }
+    },
     "Handicap" : {
       "comment" : "A label for the student's handicap.",
       "isCommentAutoGenerated" : true,
@@ -3169,6 +3269,30 @@
         }
       }
     },
+    "Importing Demo Video..." : {
+      "comment" : "A message that appears while importing a demo video.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데모 동영상을 가져오는 중..."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在导入示范视频..."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在匯入示範影片..."
+          }
+        }
+      }
+    },
     "Include your business identity and an unsubscribe instruction in promotional email." : {
       "localizations" : {
         "ko" : {
@@ -3190,6 +3314,10 @@
           }
         }
       }
+    },
+    "Instructions" : {
+      "comment" : "\"Reps\" is a colloquial term for \"repetitions\" or \"number of times to perform an exercise.\"",
+      "isCommentAutoGenerated" : true
     },
     "Korean" : {
       "localizations" : {
@@ -3235,6 +3363,30 @@
         }
       }
     },
+    "Large Video File" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대용량 동영상 파일"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大型视频文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大型影片檔案"
+          }
+        }
+      },
+      "comment" : "A title for an alert that warns a user that a video is too large to share.",
+      "isCommentAutoGenerated" : true
+    },
     "Lesson" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3278,6 +3430,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "課程日期"
+          }
+        }
+      }
+    },
+    "Lesson fee restored, but %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 복원되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已恢复，但 %@ 没有登记电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已恢復，但 %@ 沒有登記電子郵件地址。"
+          }
+        }
+      }
+    },
+    "Lesson fee restored, but this device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 복원되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已恢复，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已恢復，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
+    "Lesson Focus" : {
+      "comment" : "Labels for the different sections of a session note.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 중점"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程重点"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程重點"
           }
         }
       }
@@ -3346,6 +3566,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "課程記錄"
+          }
+        }
+      }
+    },
+    "Lesson Summary" : {
+      "comment" : "The title of a lesson summary email.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 요약"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程总结"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程摘要"
+          }
+        }
+      }
+    },
+    "Lesson Summary Email" : {
+      "comment" : "The title of an alert that appears when the user emails a lesson summary.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 요약 이메일"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程总结电子邮件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程摘要電子郵件"
           }
         }
       }
@@ -3632,6 +3900,10 @@
         }
       }
     },
+    "New Drill" : {
+      "comment" : "The title of the navigation bar for a new drill.",
+      "isCommentAutoGenerated" : true
+    },
     "New Lesson Notes" : {
       "comment" : "A title for a new lesson notes form.",
       "isCommentAutoGenerated" : true,
@@ -3678,6 +3950,30 @@
         }
       }
     },
+    "Next Lesson Goal" : {
+      "comment" : "\"Next Lesson Goal\" is a placeholder for the user to input their goals for the next lesson.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 레슨 목표"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下节课目标"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一堂課目標"
+          }
+        }
+      }
+    },
     "No coach analysis videos saved" : {
       "localizations" : {
         "ko" : {
@@ -3696,6 +3992,82 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未儲存教練分析影片"
+          }
+        }
+      }
+    },
+    "No Drills" : {
+      "comment" : "A title for a view that shows when a user has not created any drills.",
+      "isCommentAutoGenerated" : true
+    },
+    "No drills assigned." : {
+      "comment" : "A message displayed when a lesson has no drills assigned.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지정된 드릴이 없습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未分配训练项目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未指定訓練項目。"
+          }
+        }
+      }
+    },
+    "No drills yet. Create one in Drill Library." : {
+      "comment" : "A message displayed when a user has not yet created any drills.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 드릴이 없습니다. 드릴 라이브러리에서 생성하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有训练项目。请在训练库中创建。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無訓練項目。請在訓練庫中建立。"
+          }
+        }
+      }
+    },
+    "No email address is saved for %@." : {
+      "comment" : "A message that indicates that there is no email address saved for a given student. The argument is the name of the student.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 이메일 주소가 저장되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有为 %@ 保存电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未為 %@ 儲存電子郵件地址。"
           }
         }
       }
@@ -3767,6 +4139,10 @@
           }
         }
       }
+    },
+    "No Matching Drills" : {
+      "comment" : "A title for a view that displays when there are no matching drills.",
+      "isCommentAutoGenerated" : true
     },
     "No notes added yet" : {
       "comment" : "A placeholder text displayed when a user has not added any notes to a session.",
@@ -3928,6 +4304,30 @@
         }
       }
     },
+    "Not provided" : {
+      "comment" : "Value to be displayed when a value is not provided.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "입력되지 않음"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提供"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提供"
+          }
+        }
+      }
+    },
     "Notes" : {
       "localizations" : {
         "ko" : {
@@ -4016,6 +4416,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "確定"
+          }
+        }
+      }
+    },
+    "Open Swing Screenshot" : {
+      "comment" : "A button that opens a full-screen view of a user's swing screenshot.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스윙 스크린샷 열기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开挥杆截图"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟揮桿截圖"
           }
         }
       }
@@ -4226,6 +4650,50 @@
         }
       }
     },
+    "Payment saved, but %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제가 저장되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已保存，但 %@ 没有登记电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已儲存，但 %@ 沒有登記電子郵件地址。"
+          }
+        }
+      }
+    },
+    "Payment saved, but this device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제가 저장되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已保存，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付款已儲存，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
     "Payments" : {
       "localizations" : {
         "ko" : {
@@ -4336,6 +4804,54 @@
         }
       }
     },
+    "Private Coach Journal" : {
+      "comment" : "Label for a note field that contains notes that are only visible to the coach.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "코치 비공개 일지"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教练私人日志"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "教練私人日誌"
+          }
+        }
+      }
+    },
+    "Private observations for the coach only" : {
+      "comment" : "A description of the private coach journal.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "코치만 볼 수 있는 비공개 관찰 기록"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅供教练查看的私人观察记录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅供教練查看的私人觀察記錄"
+          }
+        }
+      }
+    },
     "Problem Areas" : {
       "comment" : "A section for noting any issues or areas for improvement.",
       "isCommentAutoGenerated" : true,
@@ -4428,6 +4944,10 @@
         }
       }
     },
+    "Purpose" : {
+      "comment" : "Indicates the purpose of a drill.",
+      "isCommentAutoGenerated" : true
+    },
     "recipient@example.com, second@example.com" : {
       "comment" : "A label for the email addresses to which the user can send the exported student data.",
       "isCommentAutoGenerated" : true,
@@ -4473,6 +4993,10 @@
           }
         }
       }
+    },
+    "Recommended Reps" : {
+      "comment" : "\"Reps\" is a colloquial term for \"repetitions\" or \"number of times to repeat an exercise\".",
+      "isCommentAutoGenerated" : true
     },
     "Record Lesson Fee" : {
       "comment" : "A button that records a lesson fee as a deduction.",
@@ -4615,6 +5139,14 @@
         }
       }
     },
+    "Remove Demo Video" : {
+      "comment" : "A button that removes a video that was attached to a drill.",
+      "isCommentAutoGenerated" : true
+    },
+    "Remove Image" : {
+      "comment" : "A button that removes an attached image from a drill.",
+      "isCommentAutoGenerated" : true
+    },
     "Remove Photo" : {
       "localizations" : {
         "ko" : {
@@ -4718,6 +5250,10 @@
           }
         }
       }
+    },
+    "Reps: %@" : {
+      "comment" : "A label displaying the recommended number of repetitions for a drill. The argument is the recommended number of repetitions.",
+      "isCommentAutoGenerated" : true
     },
     "Reset Full Video" : {
       "localizations" : {
@@ -5153,6 +5689,10 @@
         }
       }
     },
+    "Search Drills" : {
+      "comment" : "A label for a search bar.",
+      "isCommentAutoGenerated" : true
+    },
     "Search students" : {
       "localizations" : {
         "ko" : {
@@ -5171,6 +5711,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜尋學員"
+          }
+        }
+      }
+    },
+    "Select Drills" : {
+      "comment" : "A button that opens a sheet to select drills.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "드릴 선택"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择训练项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇訓練項目"
           }
         }
       }
@@ -5271,6 +5835,7 @@
     },
     "Send Notes" : {
       "comment" : "A button that shares the session notes.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "ko" : {
@@ -5335,6 +5900,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "寄件者"
+          }
+        }
+      }
+    },
+    "Session charge saved, but %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 저장되었지만 %@의 이메일 주소가 등록되어 있지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已保存，但 %@ 没有登记电子邮件地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已儲存，但 %@ 沒有登記電子郵件地址。"
+          }
+        }
+      }
+    },
+    "Session charge saved, but this device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 비용이 저장되었지만 이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "课程费用已保存，但此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課程費用已儲存，但此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
           }
         }
       }
@@ -5407,6 +6016,7 @@
     },
     "Share Lesson Notes" : {
       "comment" : "A title for a view that allows users to share their lesson notes.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "ko" : {
@@ -5429,8 +6039,34 @@
         }
       }
     },
+    "Share Lesson Summary" : {
+      "comment" : "A button that shares the lesson summary.",
+      "extractionState" : "stale",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레슨 요약 공유"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享课程总结"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享課程摘要"
+          }
+        }
+      }
+    },
     "Share Notes" : {
       "comment" : "A button that shares the user's session notes.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "ko" : {
@@ -5449,6 +6085,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享備註"
+          }
+        }
+      }
+    },
+    "Share Summary" : {
+      "comment" : "A button that shares a summary of a session.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "요약 공유"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享总结"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享摘要"
+          }
+        }
+      }
+    },
+    "Share Summary + Media" : {
+      "comment" : "A button that shares a lesson summary with attached media.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "요약 및 미디어 공유"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享总结和媒体"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享摘要與媒體"
           }
         }
       }
@@ -5569,6 +6253,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "簡體中文"
+          }
+        }
+      }
+    },
+    "Single Lesson" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단일 레슨"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单节课"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "單堂課"
           }
         }
       }
@@ -5723,6 +6429,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "直線"
+          }
+        }
+      }
+    },
+    "Student" : {
+      "comment" : "Label for the student's name in a lesson summary.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "학생"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "学生"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "學生"
           }
         }
       }
@@ -5883,6 +6613,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主旨"
+          }
+        }
+      }
+    },
+    "Swing Screenshot" : {
+      "comment" : "The title of a lesson note attachment preview.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스윙 스크린샷"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "挥杆截图"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "揮桿截圖"
           }
         }
       }
@@ -6048,6 +6802,28 @@
         }
       }
     },
+    "The whole payment package has been deleted. Would you like to email the updated account statement to %@?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전체 결제 패키지가 삭제되었습니다. 업데이트된 계정 명세서를 %@에게 이메일로 보내시겠습니까?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整个付款套餐已删除。是否要将更新后的账户对账单通过电子邮件发送给 %@？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整個付款套票已刪除。是否要將更新後的帳戶明細以電子郵件傳送給 %@？"
+          }
+        }
+      }
+    },
     "This address appears in To. Students remain in Bcc." : {
       "localizations" : {
         "ko" : {
@@ -6070,6 +6846,52 @@
         }
       }
     },
+    "This device cannot send email. Set up Mail on an iPhone and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기에서는 이메일을 보낼 수 없습니다. iPhone에서 Mail을 설정한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备无法发送电子邮件。请在 iPhone 上设置“邮件”后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此裝置無法傳送電子郵件。請在 iPhone 上設定「郵件」後再試一次。"
+          }
+        }
+      }
+    },
+    "This journal is visible only in the coach app and is never included in student sharing." : {
+      "comment" : "A description of the private coach journal.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 일지는 코치 앱 안에서만 표시되며 학생과 공유할 때 절대 포함되지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此日志仅在教练应用内可见，绝不会包含在与学生分享的内容中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此日誌僅在教練 App 內可見，絕不會包含在與學生分享的內容中。"
+          }
+        }
+      }
+    },
     "This video file could not be found." : {
       "localizations" : {
         "ko" : {
@@ -6088,6 +6910,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "找不到此影片檔案。"
+          }
+        }
+      }
+    },
+    "This video may be too large for Email. Try WhatsApp, AirDrop, or Messages." : {
+      "comment" : "A message displayed when a video is too large to share via email.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 동영상은 이메일로 보내기에는 너무 클 수 있습니다. WhatsApp, AirDrop 또는 메시지를 사용해 보세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此视频可能太大，无法通过电子邮件发送。请尝试使用 WhatsApp、AirDrop 或信息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此影片可能太大，無法透過電子郵件傳送。請嘗試使用 WhatsApp、AirDrop 或「訊息」。"
           }
         }
       }
@@ -6298,6 +7144,56 @@
         }
       }
     },
+    "Unable to prepare account statement because %@ has no email address on file." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 이메일 주소가 등록되어 있지 않아 계정 명세서를 준비할 수 없습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 没有登记电子邮件地址，因此无法准备账户对账单。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 沒有登記電子郵件地址，因此無法準備帳戶明細。"
+          }
+        }
+      }
+    },
+    "Unable to Share Drill Video" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "드릴 동영상을 공유할 수 없음"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法分享训练视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法分享訓練影片"
+          }
+        }
+      },
+      "comment" : "A title for an alert that appears when a user tries to share a video that is too large.",
+      "isCommentAutoGenerated" : true
+    },
+    "Uncategorized" : {
+      "comment" : "Category name for drills that do not belong to any specific category.",
+      "isCommentAutoGenerated" : true
+    },
     "Undo" : {
       "localizations" : {
         "ko" : {
@@ -6410,6 +7306,10 @@
           }
         }
       }
+    },
+    "Untitled Drill" : {
+      "comment" : "A placeholder name for a drill that has not been named.",
+      "isCommentAutoGenerated" : true
     },
     "Used %@" : {
       "comment" : "A label indicating the amount of money that has been deducted from a package. The argument is the amount of money that has been deducted.",
@@ -6569,6 +7469,30 @@
         }
       }
     },
+    "What is the goal for the next lesson?" : {
+      "comment" : "A label for the next lesson goal field.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 레슨의 목표는 무엇인가요?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下节课的目标是什么？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一堂課的目標是什麼？"
+          }
+        }
+      }
+    },
     "What issues were observed?" : {
       "localizations" : {
         "ko" : {
@@ -6591,6 +7515,54 @@
         }
       }
     },
+    "What should the student practice before the next lesson?" : {
+      "comment" : "A label for the homework field in the edit session note view.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "학생이 다음 레슨 전에 무엇을 연습해야 하나요?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "学生在下节课前应练习什么？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "學生在下一堂課前應練習什麼？"
+          }
+        }
+      }
+    },
+    "What should the student remember from this lesson?" : {
+      "comment" : "A label for the coach notes section of a lesson note.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "학생이 이번 레슨에서 기억해야 할 내용은 무엇인가요?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "学生应记住本节课的哪些内容？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "學生應記住本堂課的哪些內容？"
+          }
+        }
+      }
+    },
     "What the student is improving" : {
       "localizations" : {
         "ko" : {
@@ -6609,6 +7581,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "學員正在改進的內容"
+          }
+        }
+      }
+    },
+    "What was the primary focus of this lesson?" : {
+      "comment" : "A label for a text field where the user can enter the focus of a lesson.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이번 레슨의 주요 중점은 무엇이었나요?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本节课的主要重点是什么？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本堂課的主要重點是什麼？"
+          }
+        }
+      }
+    },
+    "Which drills were assigned?" : {
+      "comment" : "A label for the drills field in the edit session note view.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 훈련 드릴을 지정했나요?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "布置了哪些练习项目？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指定了哪些練習項目？"
           }
         }
       }

@@ -19,6 +19,8 @@ struct GOLF_COACHApp: App {
             LessonVideo.self,
             CoachAnalysisVideo.self,
             LessonSessionNote.self,
+            LessonNoteImageAttachment.self,
+            Drill.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
