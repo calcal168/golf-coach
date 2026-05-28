@@ -14,6 +14,7 @@ import Photos
 import AVKit
 import AVFoundation
 import LocalAuthentication
+import Observation
 import ReplayKit
 import SwiftData
 import SwiftUI
@@ -45,10 +46,134 @@ private enum AppLanguage: String, CaseIterable {
     }
 }
 
+enum AppTab: String, Codable {
+    case students
+    case schedule
+    case payments
+    case videos
+    case drills
+}
+
+struct LastSessionState: Codable, Equatable {
+    var selectedTab: AppTab = .students
+    var selectedStudentID: Data?
+    var selectedStudentName: String?
+    var selectedLessonDate: Date?
+    var beforeComparisonVideoID: Data?
+    var afterComparisonVideoID: Data?
+    var comparisonLayoutMode: String?
+    var playbackSpeed: Float = 1.0
+    var beforeVideoProgress = 0.0
+    var afterVideoProgress = 0.0
+
+    var hasActiveCoachingSession: Bool {
+        selectedStudentID != nil && selectedLessonDate != nil
+    }
+
+    var hasComparison: Bool {
+        beforeComparisonVideoID != nil && afterComparisonVideoID != nil
+    }
+}
+
+@MainActor
+@Observable
+final class SessionStateManager {
+    private static let storageKey = "lastSessionState"
+
+    private(set) var state: LastSessionState
+
+    init() {
+        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+           let restored = try? JSONDecoder().decode(LastSessionState.self, from: data) {
+            state = restored
+        } else {
+            state = LastSessionState()
+        }
+    }
+
+    func setSelectedTab(_ tab: AppTab) {
+        state.selectedTab = tab
+        save()
+    }
+
+    func selectStudent(_ student: Student, preservingDetail: Bool = false) {
+        state.selectedStudentID = identifierData(for: student)
+        state.selectedStudentName = student.name
+        if !preservingDetail {
+            state.selectedLessonDate = nil
+            clearComparison()
+        }
+        save()
+    }
+
+    func selectLessonDate(_ date: Date, preservingComparison: Bool = false) {
+        state.selectedLessonDate = Calendar.current.startOfDay(for: date)
+        if !preservingComparison {
+            clearComparison()
+        }
+        save()
+    }
+
+    func updateComparison(
+        beforeVideo: LessonVideo,
+        afterVideo: LessonVideo,
+        layoutMode: ComparisonLayoutMode,
+        playbackSpeed: Float,
+        beforeProgress: Double,
+        afterProgress: Double
+    ) {
+        state.beforeComparisonVideoID = identifierData(for: beforeVideo)
+        state.afterComparisonVideoID = identifierData(for: afterVideo)
+        state.comparisonLayoutMode = layoutMode.rawValue
+        state.playbackSpeed = playbackSpeed
+        state.beforeVideoProgress = beforeProgress
+        state.afterVideoProgress = afterProgress
+        save()
+    }
+
+    func startFresh() {
+        let selectedTab = state.selectedTab
+        state = LastSessionState(selectedTab: selectedTab)
+        save()
+    }
+
+    func matches<Model: PersistentModel>(_ model: Model, storedIdentifier: Data?) -> Bool {
+        guard let storedIdentifier,
+              let identifier = try? JSONDecoder().decode(PersistentIdentifier.self, from: storedIdentifier) else {
+            return false
+        }
+        return model.persistentModelID == identifier
+    }
+
+    private func identifierData<Model: PersistentModel>(for model: Model) -> Data? {
+        try? JSONEncoder().encode(model.persistentModelID)
+    }
+
+    private func clearComparison() {
+        state.beforeComparisonVideoID = nil
+        state.afterComparisonVideoID = nil
+        state.comparisonLayoutMode = nil
+        state.playbackSpeed = 1.0
+        state.beforeVideoProgress = 0
+        state.afterVideoProgress = 0
+    }
+
+    private func save() {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: Self.storageKey)
+    }
+}
+
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("selectedAppLanguage") private var selectedAppLanguage = AppLanguage.english.rawValue
     @AppStorage("prefersDarkMode") private var prefersDarkMode = false
+    @Query(sort: \Student.name) private var students: [Student]
+    @State private var sessionStateManager = SessionStateManager()
+    @State private var selectedTab: AppTab = .students
+    @State private var requestedRestoration: LastSessionState?
+    @State private var isShowingResumePrompt = false
+    @State private var resumeStudent: Student?
     @State private var selectedVideo: VideoPlaybackSelection?
     @State private var selectedCoachAnalysis: CoachAnalysisPlaybackSelection?
     @State private var isPreparingVideo = false
@@ -70,7 +195,12 @@ struct ContentView: View {
             }
         }
         .task {
+            selectedTab = sessionStateManager.state.selectedTab
             authenticate()
+        }
+        .onChange(of: isUnlocked) { _, unlocked in
+            guard unlocked else { return }
+            prepareSessionRestoration()
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
@@ -89,27 +219,52 @@ struct ContentView: View {
             AppLanguage(rawValue: selectedAppLanguage)?.locale ?? AppLanguage.english.locale
         )
         .preferredColorScheme(prefersDarkMode ? .dark : .light)
+        .alert("Resume Previous Session?", isPresented: $isShowingResumePrompt, presenting: resumeStudent) { _ in
+            Button("Resume") {
+                selectedTab = .students
+                sessionStateManager.setSelectedTab(.students)
+                requestedRestoration = sessionStateManager.state
+            }
+            Button("Start Fresh", role: .cancel) {
+                selectedTab = .students
+                sessionStateManager.startFresh()
+                sessionStateManager.setSelectedTab(.students)
+                requestedRestoration = nil
+            }
+        } message: { student in
+            Text(resumeSessionMessage(for: student))
+        }
     }
 
     private var applicationContent: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             StudentDirectoryView(
                 onPlayVideo: openVideo,
-                onPlayCoachAnalysis: openCoachAnalysis
+                onPlayCoachAnalysis: openCoachAnalysis,
+                sessionStateManager: sessionStateManager,
+                restorationRequest: $requestedRestoration
             )
                 .tabItem { Label("Students", systemImage: "person.2") }
+                .tag(AppTab.students)
 
             ScheduleView()
                 .tabItem { Label("Schedule", systemImage: "calendar") }
+                .tag(AppTab.schedule)
 
             PaymentsView()
                 .tabItem { Label("Payments", systemImage: "creditcard") }
+                .tag(AppTab.payments)
 
             VideoLibraryView(onPlayVideo: openVideo)
                 .tabItem { Label("Videos", systemImage: "video") }
+                .tag(AppTab.videos)
 
             DrillLibraryView()
                 .tabItem { Label("Drills", systemImage: "list.bullet.clipboard") }
+                .tag(AppTab.drills)
+        }
+        .onChange(of: selectedTab) { _, tab in
+            sessionStateManager.setSelectedTab(tab)
         }
         .fullScreenCover(item: $selectedVideo, onDismiss: {
             print("DEBUG ContentView selectedVideo cleared on dismiss")
@@ -170,6 +325,37 @@ struct ContentView: View {
         selectedCoachAnalysis = nil
         isPreparingVideo = false
         isPreparingCoachAnalysis = false
+    }
+
+    private func prepareSessionRestoration() {
+        let savedState = sessionStateManager.state
+        guard let student = students.first(where: {
+            sessionStateManager.matches($0, storedIdentifier: savedState.selectedStudentID)
+        }) else {
+            if savedState.selectedStudentID != nil {
+                sessionStateManager.startFresh()
+            }
+            return
+        }
+
+        if savedState.hasActiveCoachingSession {
+            resumeStudent = student
+            isShowingResumePrompt = true
+        } else {
+            requestedRestoration = savedState
+        }
+    }
+
+    private func resumeSessionMessage(for student: Student) -> String {
+        var lines = [student.name]
+        if let date = sessionStateManager.state.selectedLessonDate {
+            lines.append(date.formatted(date: .abbreviated, time: .omitted))
+        }
+        if let rawMode = sessionStateManager.state.comparisonLayoutMode,
+           let mode = ComparisonLayoutMode(rawValue: rawMode) {
+            lines.append("\(String(localized: "Comparison Mode")): \(mode.resumeDescription)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func openVideo(_ video: LessonVideo, student: Student) {
@@ -304,6 +490,8 @@ struct StudentDirectoryView: View {
     @Query(sort: \Student.name) private var students: [Student]
     let onPlayVideo: (LessonVideo, Student) -> Void
     let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
+    let sessionStateManager: SessionStateManager
+    @Binding var restorationRequest: LastSessionState?
     @State private var isExportingStudents = false
     @State private var navigationPath: [Student] = []
     @State private var highlightedStudentID: PersistentIdentifier?
@@ -395,7 +583,10 @@ struct StudentDirectoryView: View {
                 StudentDetailView(
                     student: student,
                     onPlayVideo: onPlayVideo,
-                    onPlayCoachAnalysis: onPlayCoachAnalysis
+                    onPlayCoachAnalysis: onPlayCoachAnalysis,
+                    sessionStateManager: sessionStateManager,
+                    restoredSession: restoredSession(for: student),
+                    onRestorationHandled: { restorationRequest = nil }
                 )
             }
             .toolbar {
@@ -537,6 +728,7 @@ struct StudentDirectoryView: View {
             .task {
                 updateAutomaticBackupAvailability()
                 createAutomaticBackupIfNeeded()
+                restoreRequestedStudent()
 
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15 * 60))
@@ -548,6 +740,9 @@ struct StudentDirectoryView: View {
                 if newPhase == .active {
                     createAutomaticBackupIfNeeded()
                 }
+            }
+            .onChange(of: restorationRequest) { _, _ in
+                restoreRequestedStudent()
             }
         }
     }
@@ -562,6 +757,7 @@ struct StudentDirectoryView: View {
             return
         }
 
+        sessionStateManager.selectStudent(student)
         highlightedStudentID = student.persistentModelID
         withAnimation(.easeOut(duration: 0.18)) {
             selectedStudentPrompt = student.name
@@ -577,6 +773,27 @@ struct StudentDirectoryView: View {
             }
             highlightedStudentID = nil
         }
+    }
+
+    private func restoreRequestedStudent() {
+        guard let request = restorationRequest,
+              let student = students.first(where: {
+                  sessionStateManager.matches($0, storedIdentifier: request.selectedStudentID)
+              }) else {
+            return
+        }
+
+        if navigationPath.last?.persistentModelID != student.persistentModelID {
+            navigationPath = [student]
+        }
+    }
+
+    private func restoredSession(for student: Student) -> LastSessionState? {
+        guard let request = restorationRequest,
+              sessionStateManager.matches(student, storedIdentifier: request.selectedStudentID) else {
+            return nil
+        }
+        return request
     }
 
     private var studentDeletionConfirmationMessage: String {
@@ -1280,6 +1497,8 @@ struct StudentDetailView: View {
     @Bindable var student: Student
     let onPlayVideo: (LessonVideo, Student) -> Void
     let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
+    let sessionStateManager: SessionStateManager
+    let onRestorationHandled: () -> Void
     @State private var name: String
     @State private var phoneNumber: String
     @State private var email: String
@@ -1296,9 +1515,12 @@ struct StudentDetailView: View {
     @State private var isAddingPackage = false
     @State private var isAddingLesson = false
     @State private var isAddingVideo = false
+    @State private var newVideoDefaultDate: Date = .now
     @State private var isCapturingSwingVideo = false
+    @State private var captureVideoLessonDate: Date = .now
     @State private var videoCaptureError: String?
     @State private var isShowingVideoCaptureError = false
+    @State private var processedCaptureURLs: Set<URL> = []
     @State private var sessionNoteToShare: LessonSessionNote?
     @State private var isAddingSessionNote = false
     @State private var sessionNoteDefaultDate: Date = .now
@@ -1332,15 +1554,22 @@ struct StudentDetailView: View {
     @State private var isConfirmingFinalChargeReversal = false
     @State private var undoStatusMessage: String?
     @State private var isShowingUndoStatus = false
+    @State private var restoredLessonDate: Date?
+    @State private var shouldRestoreComparison: Bool
 
     init(
         student: Student,
         onPlayVideo: @escaping (LessonVideo, Student) -> Void,
-        onPlayCoachAnalysis: @escaping (CoachAnalysisVideo) -> Void
+        onPlayCoachAnalysis: @escaping (CoachAnalysisVideo) -> Void,
+        sessionStateManager: SessionStateManager,
+        restoredSession: LastSessionState? = nil,
+        onRestorationHandled: @escaping () -> Void = {}
     ) {
         self.student = student
         self.onPlayVideo = onPlayVideo
         self.onPlayCoachAnalysis = onPlayCoachAnalysis
+        self.sessionStateManager = sessionStateManager
+        self.onRestorationHandled = onRestorationHandled
         _name = State(initialValue: student.name)
         _phoneNumber = State(initialValue: student.phoneNumber)
         _email = State(initialValue: student.email)
@@ -1350,6 +1579,12 @@ struct StudentDetailView: View {
         _handicap = State(initialValue: student.handicap ?? "")
         _golfGoal = State(initialValue: student.golfGoal ?? "")
         _jobInfo = State(initialValue: student.jobInfo ?? "")
+        let availableDates = LessonTimelineBuilder.days(for: student).map(\.date)
+        let validRestoredDate = restoredSession?.selectedLessonDate.flatMap { savedDate in
+            availableDates.first { Calendar.current.isDate($0, inSameDayAs: savedDate) }
+        }
+        _restoredLessonDate = State(initialValue: validRestoredDate)
+        _shouldRestoreComparison = State(initialValue: validRestoredDate != nil && restoredSession?.hasComparison == true)
     }
 
     var body: some View {
@@ -1362,6 +1597,16 @@ struct StudentDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             captureVideoToolbarItem
+        }
+        .navigationDestination(isPresented: restoringLessonDayBinding) {
+            if let restoredLessonDate {
+                lessonDayDetailView(for: restoredLessonDate, restoringComparison: shouldRestoreComparison)
+            }
+        }
+        .task {
+            if restoredLessonDate != nil {
+                onRestorationHandled()
+            }
         }
     }
 
@@ -1380,7 +1625,7 @@ struct StudentDetailView: View {
             AddLessonView(student: student)
         }
         .sheet(isPresented: $isAddingVideo) {
-            AddVideoView(student: student)
+            AddVideoView(student: student, defaultDate: newVideoDefaultDate)
         }
         .fullScreenCover(isPresented: $isCapturingSwingVideo) {
             VideoCaptureView { url in
@@ -1584,11 +1829,16 @@ struct StudentDetailView: View {
             bioSection
             accountSection
             packageSection
-            LessonListSection(student: student)
-            LessonSessionsSection(
+            LessonTimelineSection(
                 student: student,
-                onCaptureVideo: startVideoCapture,
-                onAddVideo: { isAddingVideo = true },
+                sessionStateManager: sessionStateManager,
+                onCaptureVideo: { date in
+                    startVideoCapture(for: date)
+                },
+                onAddVideo: { date in
+                    newVideoDefaultDate = date
+                    isAddingVideo = true
+                },
                 onPlayVideo: onPlayVideo,
                 onPlayCoachAnalysis: onPlayCoachAnalysis,
                 onShareNote: { sessionNoteToShare = $0 },
@@ -1622,6 +1872,42 @@ struct StudentDetailView: View {
                 selectedPhotoItem = nil
             }
         }
+    }
+
+    private var restoringLessonDayBinding: Binding<Bool> {
+        Binding(
+            get: { restoredLessonDate != nil },
+            set: { isPresented in
+                if !isPresented {
+                    restoredLessonDate = nil
+                    shouldRestoreComparison = false
+                }
+            }
+        )
+    }
+
+    private func lessonDayDetailView(for date: Date, restoringComparison: Bool) -> some View {
+        LessonDayDetailView(
+            student: student,
+            date: date,
+            sessionStateManager: sessionStateManager,
+            restoreComparisonOnAppear: restoringComparison,
+            onCaptureVideo: { startVideoCapture(for: $0) },
+            onAddVideo: {
+                newVideoDefaultDate = $0
+                isAddingVideo = true
+            },
+            onPlayVideo: onPlayVideo,
+            onPlayCoachAnalysis: onPlayCoachAnalysis,
+            onShareNote: { sessionNoteToShare = $0 },
+            onAddSessionNote: {
+                sessionNoteDefaultDate = $0
+                isAddingSessionNote = true
+            },
+            onEditNote: { sessionNoteForEditing = $0 },
+            onEditVideo: { sessionVideoForEditing = $0 },
+            onEditAnalysis: { sessionAnalysisForEditing = $0 }
+        )
     }
 
     @ToolbarContentBuilder
@@ -1825,8 +2111,11 @@ struct StudentDetailView: View {
     private var videoSection: some View {
         VideoListSection(
             student: student,
-            onCaptureVideo: startVideoCapture,
-            onAddVideo: { isAddingVideo = true },
+            onCaptureVideo: { startVideoCapture() },
+            onAddVideo: {
+                newVideoDefaultDate = .now
+                isAddingVideo = true
+            },
             onPlayVideo: onPlayVideo
         )
     }
@@ -2041,27 +2330,45 @@ struct StudentDetailView: View {
         student.photoData = resized.jpegData(compressionQuality: 0.8)
     }
 
-    private func startVideoCapture() {
+    private func startVideoCapture(for date: Date = .now) {
         if let issue = VideoCaptureReadiness.blockingIssue {
             videoCaptureError = issue
             isShowingVideoCaptureError = true
             return
         }
 
+        captureVideoLessonDate = date
+        processedCaptureURLs.removeAll()
         isCapturingSwingVideo = true
     }
 
     private func saveCapturedSwingVideo(from url: URL) {
+        let sourceURL = url.standardizedFileURL
+        guard processedCaptureURLs.insert(sourceURL).inserted else {
+            print("DEBUG LessonVideo capture ignored duplicate callback: \(sourceURL.path)")
+            return
+        }
+
         do {
             let savedURL = try VideoFileStore.copyVideo(from: url)
+            guard !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingFileURL: savedURL),
+                  !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingContentOf: savedURL) else {
+                print("DEBUG LessonVideo capture ignored duplicate stored path: \(savedURL.path)")
+                return
+            }
+
             let video = LessonVideo(
-                title: "Lesson Video — \(Date.now.formatted(date: .abbreviated, time: .omitted))",
+                title: "Lesson Video — \(captureVideoLessonDate.formatted(date: .abbreviated, time: .omitted))",
                 recordedAt: .now,
                 fileURLString: VideoFileStore.persistedFileName(for: savedURL),
-                lessonDate: .now
+                lessonDate: captureVideoLessonDate
             )
             student.videos.append(video)
+            Task {
+                await VideoFileStore.logVideoImport(url: savedURL, source: "camera")
+            }
         } catch {
+            print("DEBUG LessonVideo capture import failed: fileURL=\(sourceURL.path) error=\(error.localizedDescription)")
             videoCaptureError = error.localizedDescription
             isShowingVideoCaptureError = true
         }
@@ -2312,7 +2619,8 @@ struct VideoListSection: View {
     @State private var selectedVideoForEditing: LessonVideo?
 
     var sortedVideos: [LessonVideo] {
-        student.videos.sorted { $0.recordedAt > $1.recordedAt }
+        LessonVideoDisplayStore.uniqueVideos(in: student.videos)
+            .sorted { $0.recordedAt > $1.recordedAt }
     }
 
     var lessonGroups: [LessonVideoGroup] {
@@ -2687,6 +2995,1233 @@ struct LessonVideoRow: View {
     }
 }
 
+struct SwingComparisonSelectionView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let student: Student
+    let lessonDate: Date
+    let sessionStateManager: SessionStateManager
+    let restoreComparisonOnAppear: Bool
+    @State private var beforeVideo: LessonVideo?
+    @State private var afterVideo: LessonVideo?
+    @State private var isOpeningRestoredComparison = false
+    @State private var hasAttemptedComparisonRestoration = false
+    @State private var selectedVideos: [LessonVideo] = []
+
+    private var uniqueVideos: [LessonVideo] {
+        LessonVideoDisplayStore.uniqueVideos(in: student.videos)
+            .filter { $0.fileURL != nil }
+            .sorted { ($0.lessonDate ?? $0.recordedAt) > ($1.lessonDate ?? $1.recordedAt) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection
+                        videoGrid
+                    }
+                    .padding()
+                }
+
+                openComparisonBar
+            }
+            .navigationTitle("Compare Videos")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $isOpeningRestoredComparison) {
+                if selectedVideos.count == 2,
+                   let beforeVideo = selectedVideos.first,
+                   let afterVideo = selectedVideos.last,
+                   let beforeURL = beforeVideo.fileURL,
+                   let afterURL = afterVideo.fileURL {
+                    comparisonView(
+                        beforeVideo: beforeVideo,
+                        afterVideo: afterVideo,
+                        beforeURL: beforeURL,
+                        afterURL: afterURL,
+                        restoredState: sessionStateManager.state
+                    )
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                LessonVideoDisplayStore.removeDuplicatesIfNeeded(in: student, context: modelContext)
+                await LessonVideoDisplayStore.logVideos(
+                    rawVideos: student.videos.filter { $0.fileURL != nil },
+                    uniqueVideos: uniqueVideos,
+                    context: "Compare Videos"
+                )
+                restoreSavedComparisonIfNeeded()
+            }
+        }
+    }
+
+    private func comparisonView(
+        beforeVideo: LessonVideo,
+        afterVideo: LessonVideo,
+        beforeURL: URL,
+        afterURL: URL,
+        restoredState: LastSessionState?
+        ) -> some View {
+        SwingComparisonView(
+            beforeVideo: beforeVideo,
+            afterVideo: afterVideo,
+            beforeURL: beforeURL,
+            afterURL: afterURL,
+            sessionStateManager: sessionStateManager,
+            restoredState: restoredState
+        )
+    }
+
+    private func restoreSavedComparisonIfNeeded() {
+        guard !hasAttemptedComparisonRestoration else { return }
+        hasAttemptedComparisonRestoration = true
+
+        guard restoreComparisonOnAppear,
+              sessionStateManager.state.hasComparison,
+              let before = uniqueVideos.first(where: {
+                  sessionStateManager.matches($0, storedIdentifier: sessionStateManager.state.beforeComparisonVideoID)
+              }),
+              let after = uniqueVideos.first(where: {
+                  sessionStateManager.matches($0, storedIdentifier: sessionStateManager.state.afterComparisonVideoID)
+              }) else {
+            return
+        }
+
+        selectedVideos = [before, after]
+        isOpeningRestoredComparison = true
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Select 2 videos to compare")
+                .font(.title3.weight(.semibold))
+
+            Text(selectionStatusText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var videoGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+            if uniqueVideos.isEmpty {
+                Text("No saved lesson videos are available to compare.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(uniqueVideos, id: \.persistentModelID) { video in
+                    ComparisonVideoThumbnailCard(
+                        video: video,
+                        selectionNumber: selectionNumber(for: video)
+                    ) {
+                        toggleSelection(for: video)
+                    }
+                }
+            }
+        }
+    }
+
+    private var openComparisonBar: some View {
+        VStack(spacing: 8) {
+            if selectedVideos.count == 2,
+               let beforeVideo = selectedVideos.first,
+               let afterVideo = selectedVideos.last,
+               let beforeURL = beforeVideo.fileURL,
+               let afterURL = afterVideo.fileURL {
+                NavigationLink {
+                    comparisonView(
+                        beforeVideo: beforeVideo,
+                        afterVideo: afterVideo,
+                        beforeURL: beforeURL,
+                        afterURL: afterURL,
+                        restoredState: nil
+                    )
+                } label: {
+                    Label("Open Comparison", systemImage: "play.rectangle.on.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button {
+                } label: {
+                    Label("Open Comparison", systemImage: "play.rectangle.on.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(true)
+
+                Text("Tap two different video thumbnails first.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(.bar)
+    }
+
+    private var selectionStatusText: String {
+        switch selectedVideos.count {
+        case 0:
+            return "Tap the first video."
+        case 1:
+            return "Video 1 selected. Tap the second video."
+        default:
+            return "Video 1 becomes Before. Video 2 becomes After."
+        }
+    }
+
+    private func selectionNumber(for video: LessonVideo) -> Int? {
+        selectedVideos.firstIndex { $0.persistentModelID == video.persistentModelID }.map { $0 + 1 }
+    }
+
+    private func toggleSelection(for video: LessonVideo) {
+        if let index = selectedVideos.firstIndex(where: { $0.persistentModelID == video.persistentModelID }) {
+            selectedVideos.remove(at: index)
+        } else if selectedVideos.count < 2 {
+            selectedVideos.append(video)
+        } else {
+            selectedVideos[1] = video
+        }
+    }
+}
+
+private struct ComparisonVideoThumbnailCard: View {
+    let video: LessonVideo
+    let selectionNumber: Int?
+    let onTap: () -> Void
+    @State private var thumbnail: UIImage?
+    @State private var durationText = "--:--"
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    thumbnailView
+
+                    if let selectionNumber {
+                        Text("\(selectionNumber)")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(.blue, in: Circle())
+                            .padding(8)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(video.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+
+                    Text(video.lessonDate ?? video.recordedAt, format: .dateTime.month().day().year())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(durationText)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(8)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(selectionNumber == nil ? .clear : .blue, lineWidth: 3)
+            }
+        }
+        .buttonStyle(.plain)
+        .task(id: video.persistentModelID) {
+            await loadThumbnail()
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnailView: some View {
+        if let thumbnail {
+            Image(uiImage: thumbnail)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        } else {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.tertiarySystemFill))
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .overlay {
+                    Image(systemName: "video.fill")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                }
+        }
+    }
+
+    @MainActor
+    private func loadThumbnail() async {
+        guard let url = video.fileURL else { return }
+        let asset = AVURLAsset(url: url)
+
+        if let duration = try? await asset.load(.duration).seconds,
+           duration.isFinite {
+            durationText = formattedDuration(duration)
+        }
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 640, height: 360)
+
+        do {
+            let image = try generator.copyCGImage(at: .zero, actualTime: nil)
+            thumbnail = UIImage(cgImage: image)
+        } catch {
+            print("DEBUG Compare thumbnail failed: \(url.path) \(error.localizedDescription)")
+        }
+    }
+
+    private func formattedDuration(_ seconds: Double) -> String {
+        let totalSeconds = max(Int(seconds.rounded()), 0)
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+    }
+}
+
+enum ComparisonLayoutMode: String, CaseIterable, Identifiable {
+    case sideBySide
+    case stacked
+    case focus
+
+    var id: Self { self }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .sideBySide: return "Side-by-side"
+        case .stacked: return "Stacked"
+        case .focus: return "Single Focus"
+        }
+    }
+
+    var resumeDescription: String {
+        switch self {
+        case .sideBySide: return String(localized: "Side-by-side")
+        case .stacked: return String(localized: "Stacked")
+        case .focus: return String(localized: "Single Focus")
+        }
+    }
+}
+
+private enum ComparisonPane: String, CaseIterable, Identifiable {
+    case before
+    case after
+
+    var id: Self { self }
+    var label: LocalizedStringKey { self == .before ? "Before" : "After" }
+}
+
+struct SwingComparisonView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    let beforeVideo: LessonVideo
+    let afterVideo: LessonVideo
+    private let beforeURL: URL
+    private let afterURL: URL
+    private let sessionStateManager: SessionStateManager
+
+    @State private var beforePlayer: AVPlayer
+    @State private var afterPlayer: AVPlayer
+    @State private var beforeDuration = 0.0
+    @State private var afterDuration = 0.0
+    @State private var comparisonDuration = 0.0
+    @State private var beforeFPS = 30.0
+    @State private var afterFPS = 30.0
+    @State private var beforeFrame = 0
+    @State private var afterFrame = 0
+    @State private var synchronizedFrame = 0
+    @State private var beforeProgress = 0.0
+    @State private var afterProgress = 0.0
+    @State private var playbackRate: Float = 1.0
+    @State private var isPlaying = false
+    @State private var isSyncEnabled = false
+    @State private var isBeforeScrubbing = false
+    @State private var isAfterScrubbing = false
+    @State private var isSyncScrubbing = false
+    @State private var isSeekingBefore = false
+    @State private var isSeekingAfter = false
+    @State private var chasedBeforeSeconds: Double?
+    @State private var chasedAfterSeconds: Double?
+    @State private var beforeSeekTask: Task<Void, Never>?
+    @State private var afterSeekTask: Task<Void, Never>?
+    @State private var beforeTimeObserver: Any?
+    @State private var afterTimeObserver: Any?
+    @State private var layoutMode: ComparisonLayoutMode = .stacked
+    @State private var focusedPane: ComparisonPane = .before
+    @State private var hasSelectedLayout = false
+    @State private var isDrawingEnabled = false
+    @State private var drawingTool: SwingDrawingTool = .line
+    @State private var drawingColor: SwingDrawingColor = .yellow
+    @State private var beforeStrokes: [SwingAnalysisStroke] = []
+    @State private var afterStrokes: [SwingAnalysisStroke] = []
+    @State private var beforeCurrentStroke: SwingAnalysisStroke?
+    @State private var afterCurrentStroke: SwingAnalysisStroke?
+    @State private var beforeZoomScale: CGFloat = 1
+    @State private var afterZoomScale: CGFloat = 1
+    @State private var beforeZoomOffset: CGSize = .zero
+    @State private var afterZoomOffset: CGSize = .zero
+
+    init(
+        beforeVideo: LessonVideo,
+        afterVideo: LessonVideo,
+        beforeURL: URL,
+        afterURL: URL,
+        sessionStateManager: SessionStateManager,
+        restoredState: LastSessionState? = nil
+    ) {
+        self.beforeVideo = beforeVideo
+        self.afterVideo = afterVideo
+        self.beforeURL = beforeURL
+        self.afterURL = afterURL
+        self.sessionStateManager = sessionStateManager
+        _beforePlayer = State(initialValue: AVPlayer(url: beforeURL))
+        _afterPlayer = State(initialValue: AVPlayer(url: afterURL))
+        _beforeProgress = State(initialValue: restoredState?.beforeVideoProgress ?? 0)
+        _afterProgress = State(initialValue: restoredState?.afterVideoProgress ?? 0)
+        _playbackRate = State(initialValue: restoredState?.playbackSpeed ?? 1.0)
+        if let rawMode = restoredState?.comparisonLayoutMode,
+           let restoredLayout = ComparisonLayoutMode(rawValue: rawMode) {
+            _layoutMode = State(initialValue: restoredLayout)
+            _hasSelectedLayout = State(initialValue: true)
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+            Group {
+                if isLandscape {
+                    landscapeContent(size: geometry.size)
+                } else {
+                    portraitContent(size: geometry.size)
+                }
+            }
+            .onAppear {
+                guard !hasSelectedLayout else { return }
+                layoutMode = isLandscape || geometry.size.width >= 700 ? .sideBySide : .stacked
+                hasSelectedLayout = true
+            }
+        }
+        .navigationTitle("Swing Comparison")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadPlaybackMetadata()
+            let beforeSeconds = min(beforeProgress * beforeDuration, beforeDuration)
+            let afterSeconds = min(afterProgress * afterDuration, afterDuration)
+            beforeFrame = frame(for: beforeSeconds, pane: .before)
+            afterFrame = frame(for: afterSeconds, pane: .after)
+            synchronizedFrame = synchronizedFrame(for: beforeSeconds)
+            await seek(beforePlayer, to: beforeSeconds)
+            await seek(afterPlayer, to: afterSeconds)
+            updateProgress(for: .before, seconds: beforeSeconds)
+            updateProgress(for: .after, seconds: afterSeconds)
+            addTimeObservers()
+            saveComparisonState()
+        }
+        .onDisappear {
+            beforeSeekTask?.cancel()
+            afterSeekTask?.cancel()
+            saveComparisonState()
+            pauseBoth()
+            removeTimeObservers()
+        }
+        .onChange(of: layoutMode) { _, _ in
+            saveComparisonState()
+        }
+        .onChange(of: playbackRate) { _, _ in
+            saveComparisonState()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                saveComparisonState()
+            }
+        }
+    }
+
+    private func portraitContent(size: CGSize) -> some View {
+        VStack(spacing: 8) {
+            layoutControls
+            focusedPaneControls
+            comparisonContent(size: size, isLandscape: false)
+            drawingControls
+            synchronizationControls
+            sharedPlaybackControls
+        }
+        .padding(.top, 4)
+        .safeAreaPadding(.bottom, 4)
+    }
+
+    private func landscapeContent(size: CGSize) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 8) {
+                layoutControls
+                focusedPaneControls
+            }
+            .padding(.horizontal, 6)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                comparisonContent(size: size, isLandscape: true)
+            }
+            .frame(maxHeight: .infinity)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 5) {
+                    HStack(spacing: 8) {
+                        drawingControls
+                        synchronizationToggle
+                        sharedPlaybackControls
+                    }
+
+                    if isSyncEnabled {
+                        synchronizedFrameControls
+                    }
+                }
+            }
+            .frame(maxHeight: isSyncEnabled || isDrawingEnabled ? 118 : 48)
+            .background(.bar, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 6)
+        }
+        .padding(.top, 2)
+        .safeAreaPadding(.horizontal, 4)
+        .safeAreaPadding(.bottom, 4)
+    }
+
+    private var layoutControls: some View {
+        Picker("Layout", selection: $layoutMode) {
+            ForEach(ComparisonLayoutMode.allCases) { mode in
+                Text(mode.label).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private var focusedPaneControls: some View {
+        if layoutMode == .focus {
+            Picker("Focused Video", selection: $focusedPane) {
+                ForEach(ComparisonPane.allCases) { pane in
+                    Text(pane.label).tag(pane)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+        }
+    }
+
+    @ViewBuilder
+    private func comparisonContent(size: CGSize, isLandscape: Bool) -> some View {
+        let normalPaneHeight = isLandscape
+            ? max(125, size.height - (isSyncEnabled || isDrawingEnabled ? 198 : 128))
+            : max(175, min(size.height * 0.33, 270))
+        let focusedHeight = isLandscape
+            ? max(165, size.height - (isSyncEnabled || isDrawingEnabled ? 180 : 108))
+            : max(280, size.height - 235)
+
+        switch layoutMode {
+        case .sideBySide:
+            HStack(spacing: 8) {
+                beforePane(videoHeight: normalPaneHeight, compact: true)
+                afterPane(videoHeight: normalPaneHeight, compact: true)
+            }
+            .padding(.horizontal, 8)
+            .frame(maxHeight: .infinity)
+        case .stacked:
+            ScrollView {
+                VStack(spacing: 10) {
+                    beforePane(videoHeight: normalPaneHeight, compact: isLandscape)
+                    afterPane(videoHeight: normalPaneHeight, compact: isLandscape)
+                }
+                .padding(.horizontal, 8)
+            }
+            .frame(maxHeight: .infinity)
+        case .focus:
+            Group {
+                if focusedPane == .before {
+                    beforePane(videoHeight: focusedHeight, compact: isLandscape)
+                } else {
+                    afterPane(videoHeight: focusedHeight, compact: isLandscape)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    private func beforePane(videoHeight: CGFloat, compact: Bool) -> some View {
+        ComparisonVideoPane(
+            title: "Before",
+            video: beforeVideo,
+            player: beforePlayer,
+            duration: beforeDuration,
+            progress: $beforeProgress,
+            strokes: $beforeStrokes,
+            currentStroke: $beforeCurrentStroke,
+            isDrawingEnabled: isDrawingEnabled,
+            drawingTool: drawingTool,
+            drawingColor: drawingColor,
+            isSelectedForDrawing: focusedPane == .before,
+            videoHeight: videoHeight,
+            compact: compact,
+            frameLabel: "Before Frame",
+            currentFrame: beforeFrame,
+            totalFrames: totalFrames(for: .before),
+            zoomScale: $beforeZoomScale,
+            zoomOffset: $beforeZoomOffset,
+            onSelect: { focusedPane = .before },
+            onFrameRequested: { requestFrameSeek(for: .before, to: $0) },
+            onScrubbingChanged: { editing in
+                isBeforeScrubbing = editing
+                handleScrubbingChange(editing)
+            }
+        )
+    }
+
+    private func afterPane(videoHeight: CGFloat, compact: Bool) -> some View {
+        ComparisonVideoPane(
+            title: "After",
+            video: afterVideo,
+            player: afterPlayer,
+            duration: afterDuration,
+            progress: $afterProgress,
+            strokes: $afterStrokes,
+            currentStroke: $afterCurrentStroke,
+            isDrawingEnabled: isDrawingEnabled,
+            drawingTool: drawingTool,
+            drawingColor: drawingColor,
+            isSelectedForDrawing: focusedPane == .after,
+            videoHeight: videoHeight,
+            compact: compact,
+            frameLabel: "After Frame",
+            currentFrame: afterFrame,
+            totalFrames: totalFrames(for: .after),
+            zoomScale: $afterZoomScale,
+            zoomOffset: $afterZoomOffset,
+            onSelect: { focusedPane = .after },
+            onFrameRequested: { requestFrameSeek(for: .after, to: $0) },
+            onScrubbingChanged: { editing in
+                isAfterScrubbing = editing
+                handleScrubbingChange(editing)
+            }
+        )
+    }
+
+    private var drawingControls: some View {
+        HStack(spacing: 8) {
+            DrawingTogglePill(
+                isActive: isDrawingEnabled,
+                selectedColor: drawingColor
+            ) {
+                isDrawingEnabled.toggle()
+            }
+
+            if isDrawingEnabled {
+                drawingToolButton("Line", tool: .line, icon: "line.diagonal")
+                drawingToolButton("Circle", tool: .circle, icon: "circle")
+                Button {
+                    undoDrawing()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.bordered)
+                .disabled(activeStrokes.isEmpty)
+                Button(role: .destructive) {
+                    clearDrawings()
+                } label: {
+                    Text("Clear")
+                }
+                .buttonStyle(.bordered)
+                .disabled(activeStrokes.isEmpty)
+            }
+        }
+        .font(.caption)
+        .padding(.horizontal, 8)
+    }
+
+    private var sharedPlaybackControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                playBoth()
+            } label: {
+                Label("Play Both", systemImage: "play.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSeekingBefore || isSeekingAfter)
+
+            Button {
+                pauseBoth()
+            } label: {
+                Label("Pause Both", systemImage: "pause.fill")
+            }
+            .buttonStyle(.bordered)
+
+            Picker("Speed", selection: $playbackRate) {
+                Text("0.5x").tag(Float(0.5))
+                Text("1.0x").tag(Float(1.0))
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 106)
+            .onChange(of: playbackRate) { _, rate in
+                guard isPlaying else { return }
+                beforePlayer.rate = rate
+                afterPlayer.rate = rate
+            }
+        }
+        .font(.caption)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 6)
+    }
+
+    private var synchronizationControls: some View {
+        VStack(spacing: 8) {
+            synchronizationToggle
+
+            if isSyncEnabled {
+                synchronizedFrameControls
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private var synchronizationToggle: some View {
+        Toggle("Sync Scrubbing", isOn: $isSyncEnabled)
+            .font(.subheadline.weight(.semibold))
+            .tint(.purple)
+            .onChange(of: isSyncEnabled) { _, enabled in
+                if enabled {
+                    requestSynchronizedSeek(toSeconds: time(for: beforeFrame, pane: .before))
+                }
+            }
+    }
+
+    private var synchronizedFrameControls: some View {
+        FrameScrubberControls(
+            label: "Synced Frame",
+            currentFrame: synchronizedFrame,
+            totalFrames: synchronizedTotalFrames,
+            onFrameRequested: requestSynchronizedFrameSeek,
+            onScrubbingChanged: { editing in
+                isSyncScrubbing = editing
+                handleScrubbingChange(editing)
+            }
+        )
+    }
+
+    private var activeStrokes: [SwingAnalysisStroke] {
+        focusedPane == .before ? beforeStrokes : afterStrokes
+    }
+
+    private var synchronizedFPS: Double {
+        max(beforeFPS, afterFPS)
+    }
+
+    private var synchronizedTotalFrames: Int {
+        max(Int(comparisonDuration * synchronizedFPS), 0)
+    }
+
+    private func drawingToolButton(_ title: LocalizedStringKey, tool: SwingDrawingTool, icon: String) -> some View {
+        Button {
+            drawingTool = tool
+        } label: {
+            Label(title, systemImage: icon)
+        }
+        .buttonStyle(.bordered)
+        .tint(drawingTool == tool ? .purple : .secondary)
+    }
+
+    private func undoDrawing() {
+        if focusedPane == .before {
+            _ = beforeStrokes.popLast()
+        } else {
+            _ = afterStrokes.popLast()
+        }
+    }
+
+    private func clearDrawings() {
+        if focusedPane == .before {
+            beforeStrokes.removeAll()
+            beforeCurrentStroke = nil
+        } else {
+            afterStrokes.removeAll()
+            afterCurrentStroke = nil
+        }
+    }
+
+    private func playBoth() {
+        guard !isSeekingBefore, !isSeekingAfter else { return }
+        beforePlayer.playImmediately(atRate: playbackRate)
+        afterPlayer.playImmediately(atRate: playbackRate)
+        isPlaying = true
+    }
+
+    private func pauseBoth() {
+        beforePlayer.pause()
+        afterPlayer.pause()
+        isPlaying = false
+    }
+
+    private func requestFrameSeek(for pane: ComparisonPane, to frame: Int) {
+        if isSyncEnabled {
+            requestSynchronizedSeek(toSeconds: time(for: frame, pane: pane))
+            return
+        }
+
+        pauseBoth()
+        let selectedFrame = min(max(frame, 0), totalFrames(for: pane))
+        let targetSeconds = time(for: selectedFrame, pane: pane)
+        setFrame(selectedFrame, for: pane)
+        updateProgress(for: pane, seconds: targetSeconds)
+        queueSeek(for: pane, to: targetSeconds)
+    }
+
+    private func requestSynchronizedFrameSeek(to frame: Int) {
+        let selectedFrame = min(max(frame, 0), synchronizedTotalFrames)
+        requestSynchronizedSeek(toSeconds: Double(selectedFrame) / synchronizedFPS)
+    }
+
+    private func requestSynchronizedSeek(toSeconds seconds: Double) {
+        pauseBoth()
+        let targetSeconds = min(max(seconds, 0), comparisonDuration)
+        synchronizedFrame = synchronizedFrame(for: targetSeconds)
+        beforeFrame = frame(for: targetSeconds, pane: .before)
+        afterFrame = frame(for: targetSeconds, pane: .after)
+        updateProgress(for: .before, seconds: targetSeconds)
+        updateProgress(for: .after, seconds: targetSeconds)
+        queueSeek(for: .before, to: targetSeconds)
+        queueSeek(for: .after, to: targetSeconds)
+    }
+
+    private func queueSeek(for pane: ComparisonPane, to seconds: Double) {
+        switch pane {
+        case .before:
+            chasedBeforeSeconds = seconds
+            guard !isSeekingBefore else { return }
+            isSeekingBefore = true
+            beforeSeekTask = Task { @MainActor in
+                while let targetSeconds = chasedBeforeSeconds, !Task.isCancelled {
+                    chasedBeforeSeconds = nil
+                    await seek(beforePlayer, to: targetSeconds)
+                }
+                isSeekingBefore = false
+                beforeSeekTask = nil
+                saveComparisonState()
+            }
+        case .after:
+            chasedAfterSeconds = seconds
+            guard !isSeekingAfter else { return }
+            isSeekingAfter = true
+            afterSeekTask = Task { @MainActor in
+                while let targetSeconds = chasedAfterSeconds, !Task.isCancelled {
+                    chasedAfterSeconds = nil
+                    await seek(afterPlayer, to: targetSeconds)
+                }
+                isSeekingAfter = false
+                afterSeekTask = nil
+                saveComparisonState()
+            }
+        }
+    }
+
+    @MainActor
+    private func loadPlaybackMetadata() async {
+        let beforeMetadata = await playbackMetadata(for: beforeURL)
+        let afterMetadata = await playbackMetadata(for: afterURL)
+
+        beforeDuration = beforeMetadata.duration
+        afterDuration = afterMetadata.duration
+        comparisonDuration = min(beforeMetadata.duration, afterMetadata.duration)
+        beforeFPS = beforeMetadata.fps
+        afterFPS = afterMetadata.fps
+    }
+
+    @MainActor
+    private func playbackMetadata(for url: URL) async -> (duration: Double, fps: Double) {
+        let asset = AVURLAsset(url: url)
+        let loadedDuration = (try? await asset.load(.duration).seconds) ?? 0
+        let duration = loadedDuration.isFinite ? max(loadedDuration, 0) : 0
+        let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        guard let track = tracks.first else {
+            return (duration, 30)
+        }
+
+        let nominalFrameRate = Double((try? await track.load(.nominalFrameRate)) ?? 0)
+        if nominalFrameRate.isFinite, nominalFrameRate > 0 {
+            return (duration, nominalFrameRate)
+        }
+
+        let loadedFrameDuration = (try? await track.load(.minFrameDuration).seconds) ?? 0
+        if loadedFrameDuration.isFinite, loadedFrameDuration > 0 {
+            return (duration, 1.0 / loadedFrameDuration)
+        }
+
+        return (duration, 30)
+    }
+
+    @MainActor
+    private func seek(_ player: AVPlayer, to targetSeconds: Double) async {
+        let targetTime = CMTime(seconds: targetSeconds, preferredTimescale: 600)
+        _ = await player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func totalFrames(for pane: ComparisonPane) -> Int {
+        max(Int(duration(for: pane) * fps(for: pane)), 0)
+    }
+
+    private func frame(for seconds: Double, pane: ComparisonPane) -> Int {
+        min(max(Int(seconds * fps(for: pane)), 0), totalFrames(for: pane))
+    }
+
+    private func synchronizedFrame(for seconds: Double) -> Int {
+        min(max(Int(seconds * synchronizedFPS), 0), synchronizedTotalFrames)
+    }
+
+    private func time(for frame: Int, pane: ComparisonPane) -> Double {
+        let duration = duration(for: pane)
+        return min(Double(min(max(frame, 0), totalFrames(for: pane))) / fps(for: pane), duration)
+    }
+
+    private func duration(for pane: ComparisonPane) -> Double {
+        pane == .before ? beforeDuration : afterDuration
+    }
+
+    private func fps(for pane: ComparisonPane) -> Double {
+        pane == .before ? max(beforeFPS, 1.0) : max(afterFPS, 1.0)
+    }
+
+    private func setFrame(_ frame: Int, for pane: ComparisonPane) {
+        if pane == .before {
+            beforeFrame = frame
+        } else {
+            afterFrame = frame
+        }
+    }
+
+    private func updateProgress(for pane: ComparisonPane, seconds: Double) {
+        let progress = duration(for: pane) > 0 ? min(max(seconds / duration(for: pane), 0), 1) : 0
+        if pane == .before {
+            beforeProgress = progress
+        } else {
+            afterProgress = progress
+        }
+    }
+
+    private func handleScrubbingChange(_ editing: Bool) {
+        if editing {
+            pauseBoth()
+        } else {
+            saveComparisonState()
+        }
+    }
+
+    private func addTimeObservers() {
+        let interval = CMTime(seconds: 1.0 / synchronizedFPS, preferredTimescale: 600)
+        beforeTimeObserver = beforePlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            guard !isBeforeScrubbing, !isSyncScrubbing, !isSeekingBefore, beforeDuration > 0 else { return }
+            beforeFrame = frame(for: time.seconds, pane: .before)
+            beforeProgress = min(max(time.seconds / beforeDuration, 0), 1)
+            if isSyncEnabled {
+                synchronizedFrame = synchronizedFrame(for: time.seconds)
+            }
+        }
+        afterTimeObserver = afterPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            guard !isAfterScrubbing, !isSyncScrubbing, !isSeekingAfter, afterDuration > 0 else { return }
+            afterFrame = frame(for: time.seconds, pane: .after)
+            afterProgress = min(max(time.seconds / afterDuration, 0), 1)
+        }
+    }
+
+    private func removeTimeObservers() {
+        if let beforeTimeObserver {
+            beforePlayer.removeTimeObserver(beforeTimeObserver)
+            self.beforeTimeObserver = nil
+        }
+        if let afterTimeObserver {
+            afterPlayer.removeTimeObserver(afterTimeObserver)
+            self.afterTimeObserver = nil
+        }
+    }
+
+    private func saveComparisonState() {
+        sessionStateManager.updateComparison(
+            beforeVideo: beforeVideo,
+            afterVideo: afterVideo,
+            layoutMode: layoutMode,
+            playbackSpeed: playbackRate,
+            beforeProgress: beforeProgress,
+            afterProgress: afterProgress
+        )
+    }
+}
+
+private struct ComparisonVideoPane: View {
+    let title: LocalizedStringKey
+    let video: LessonVideo
+    let player: AVPlayer
+    let duration: Double
+    @Binding var progress: Double
+    @Binding var strokes: [SwingAnalysisStroke]
+    @Binding var currentStroke: SwingAnalysisStroke?
+    let isDrawingEnabled: Bool
+    let drawingTool: SwingDrawingTool
+    let drawingColor: SwingDrawingColor
+    let isSelectedForDrawing: Bool
+    let videoHeight: CGFloat
+    let compact: Bool
+    let frameLabel: String
+    let currentFrame: Int
+    let totalFrames: Int
+    @Binding var zoomScale: CGFloat
+    @Binding var zoomOffset: CGSize
+    let onSelect: () -> Void
+    let onFrameRequested: (Int) -> Void
+    let onScrubbingChanged: (Bool) -> Void
+    @State private var gestureStartScale: CGFloat = 1
+    @State private var gestureStartOffset: CGSize = .zero
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button(action: onSelect) {
+                HStack {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    if isDrawingEnabled && isSelectedForDrawing {
+                        Label("Drawing", systemImage: "pencil")
+                            .font(.caption2)
+                            .foregroundStyle(.purple)
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+
+            zoomableVideoSurface
+
+            FrameScrubberControls(
+                label: frameLabel,
+                currentFrame: currentFrame,
+                totalFrames: totalFrames,
+                onFrameRequested: onFrameRequested,
+                onScrubbingChanged: onScrubbingChanged
+            )
+
+            HStack {
+                Text(formattedTime(progress * duration))
+                Spacer()
+                Text(formattedTime(duration))
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+
+            if !compact {
+                Text(video.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelectedForDrawing && isDrawingEnabled ? .purple : .clear, lineWidth: 2)
+        }
+    }
+
+    private var zoomableVideoSurface: some View {
+        GeometryReader { proxy in
+            ZStack {
+                ZStack {
+                    VideoPlayer(player: player)
+                        .allowsHitTesting(false)
+                    SwingDrawingOverlay(
+                        strokes: $strokes,
+                        currentStroke: $currentStroke,
+                        selectedTool: .constant(drawingTool),
+                        selectedColor: .constant(drawingColor),
+                        isDrawingEnabled: isDrawingEnabled && isSelectedForDrawing,
+                        onUndo: { _ = strokes.popLast() },
+                        onZoomBegan: { beginZoom() },
+                        onZoomChanged: { relativeScale in
+                            updateZoom(relativeScale: relativeScale, in: proxy.size)
+                        },
+                        onZoomEnded: { clampZoom(in: proxy.size) },
+                        onZoomPanBegan: { beginPan() },
+                        onZoomPanChanged: { translation in
+                            updatePan(translation: translation, in: proxy.size)
+                        }
+                    )
+                }
+                .scaleEffect(zoomScale)
+                .offset(zoomOffset)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.black)
+            .contentShape(Rectangle())
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .gesture(zoomGesture(in: proxy.size), isEnabled: !isDrawingEnabled)
+            .simultaneousGesture(panGesture(in: proxy.size), isEnabled: !isDrawingEnabled)
+            .onTapGesture(count: 2) {
+                guard !isDrawingEnabled else { return }
+                resetZoom()
+            }
+            .onTapGesture(perform: onSelect)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: videoHeight)
+    }
+
+    private func zoomGesture(in size: CGSize) -> some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                updateZoom(relativeScale: value.magnification, in: size)
+            }
+            .onEnded { _ in
+                clampZoom(in: size)
+            }
+    }
+
+    private func panGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                updatePan(translation: value.translation, in: size)
+            }
+            .onEnded { _ in
+                clampZoom(in: size)
+                beginPan()
+            }
+    }
+
+    private func beginZoom() {
+        gestureStartScale = zoomScale
+    }
+
+    private func updateZoom(relativeScale: CGFloat, in size: CGSize) {
+        if gestureStartScale == 0 {
+            gestureStartScale = zoomScale
+        }
+        zoomScale = min(max(gestureStartScale * relativeScale, 1), 5)
+        zoomOffset = clampedOffset(zoomOffset, scale: zoomScale, in: size)
+    }
+
+    private func beginPan() {
+        gestureStartOffset = zoomOffset
+    }
+
+    private func updatePan(translation: CGSize, in size: CGSize) {
+        guard zoomScale > 1 else {
+            zoomOffset = .zero
+            gestureStartOffset = .zero
+            return
+        }
+
+        let proposed = CGSize(
+            width: gestureStartOffset.width + translation.width,
+            height: gestureStartOffset.height + translation.height
+        )
+        zoomOffset = clampedOffset(proposed, scale: zoomScale, in: size)
+    }
+
+    private func clampZoom(in size: CGSize) {
+        zoomScale = min(max(zoomScale, 1), 5)
+        zoomOffset = zoomScale <= 1 ? .zero : clampedOffset(zoomOffset, scale: zoomScale, in: size)
+        gestureStartScale = zoomScale
+        gestureStartOffset = zoomOffset
+    }
+
+    private func resetZoom() {
+        zoomScale = 1
+        zoomOffset = .zero
+        gestureStartScale = 1
+        gestureStartOffset = .zero
+    }
+
+    private func clampedOffset(_ offset: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
+        guard scale > 1 else { return .zero }
+        let maxX = max((size.width * (scale - 1)) / 2, 0)
+        let maxY = max((size.height * (scale - 1)) / 2, 0)
+        return CGSize(
+            width: min(max(offset.width, -maxX), maxX),
+            height: min(max(offset.height, -maxY), maxY)
+        )
+    }
+
+    private func formattedTime(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "0:00" }
+        let totalSeconds = max(Int(seconds.rounded(.down)), 0)
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+    }
+}
+
+private struct FrameScrubberControls: View {
+    let label: String
+    let currentFrame: Int
+    let totalFrames: Int
+    let onFrameRequested: (Int) -> Void
+    let onScrubbingChanged: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(label) \(currentFrame) / \(totalFrames)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 6) {
+                Button {
+                    onFrameRequested(currentFrame - 1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .frame(width: 36, height: 36)
+                .accessibilityLabel("Previous frame")
+                .disabled(currentFrame <= 0 || totalFrames == 0)
+
+                Slider(
+                    value: Binding(
+                        get: { Double(currentFrame) },
+                        set: { onFrameRequested(Int($0.rounded())) }
+                    ),
+                    in: 0...Double(max(totalFrames, 1)),
+                    step: 1,
+                    onEditingChanged: onScrubbingChanged
+                )
+                .tint(.purple)
+                .frame(maxWidth: .infinity)
+                .disabled(totalFrames == 0)
+
+                Button {
+                    onFrameRequested(currentFrame + 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .frame(width: 36, height: 36)
+                .accessibilityLabel("Next frame")
+                .disabled(currentFrame >= totalFrames || totalFrames == 0)
+            }
+        }
+    }
+}
+
 struct ProgressNote: View {
     let label: String
     let text: String?
@@ -2709,6 +4244,657 @@ struct ProgressNote: View {
 }
 
 // MARK: - Lesson Sessions
+
+struct LessonTimelineDay: Identifiable {
+    let date: Date
+    var appointments: [LessonAppointment] = []
+    var notes: [LessonSessionNote] = []
+    var swingVideos: [LessonVideo] = []
+    var analysisVideos: [CoachAnalysisVideo] = []
+
+    var id: Date { date }
+
+    var assignmentCount: Int {
+        notes.reduce(0) { count, note in
+            let hasHomework = !note.homework.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return count + (hasHomework ? 1 : 0) + note.assignedDrills.count
+        }
+    }
+}
+
+private var _gcMigratedStudents = Set<PersistentIdentifier>()
+
+private enum LessonVideoDisplayStore {
+    static func uniqueVideos(in rawVideos: [LessonVideo]) -> [LessonVideo] {
+        // Phase 1: deduplicate by normalized file path
+        var filePathKeys = Set<String>()
+        var fallbackKeys = Set<String>()
+        var phase1: [LessonVideo] = []
+
+        for video in rawVideos {
+            if let key = filePathKey(for: video) {
+                guard filePathKeys.insert(key).inserted else { continue }
+            } else {
+                let key = fallbackKey(for: video)
+                guard fallbackKeys.insert(key).inserted else { continue }
+            }
+            phase1.append(video)
+        }
+
+        // Phase 2: deduplicate by content (file size) to catch duplicate copies of the same video file
+        var contentKeys = Set<String>()
+        var result: [LessonVideo] = []
+
+        for video in phase1 {
+            if let cKey = contentKey(for: video) {
+                guard contentKeys.insert(cKey).inserted else { continue }
+            }
+            result.append(video)
+        }
+
+        return result
+    }
+
+    static func removeDuplicatesIfNeeded(in student: Student, context: ModelContext) {
+        guard _gcMigratedStudents.insert(student.persistentModelID).inserted else { return }
+        removeDuplicates(in: student, context: context)
+    }
+
+    static func removeDuplicates(in student: Student, context: ModelContext) {
+        var filePathKeys = Set<String>()
+        var contentKeys = Set<String>()
+        var toDelete: [LessonVideo] = []
+
+        for video in student.videos {
+            var isFirstSeen = true
+
+            if let key = filePathKey(for: video) {
+                isFirstSeen = filePathKeys.insert(key).inserted
+            }
+
+            if isFirstSeen, let cKey = contentKey(for: video) {
+                isFirstSeen = contentKeys.insert(cKey).inserted
+            }
+
+            if !isFirstSeen {
+                toDelete.append(video)
+                print("DEBUG migration: duplicate marked for deletion:", video.title, video.fileURLString ?? "nil")
+            }
+        }
+
+        for video in toDelete {
+            print("DEBUG migration: deleting duplicate:", video.title, video.fileURLString ?? "nil")
+            VideoFileStore.deleteStoredVideoFile(for: video)
+            student.videos.removeAll { $0.persistentModelID == video.persistentModelID }
+            context.delete(video)
+        }
+
+        if !toDelete.isEmpty {
+            print("DEBUG migration: removed \(toDelete.count) duplicate(s) for \(student.name)")
+        }
+    }
+
+    static func containsVideo(in videos: [LessonVideo], matchingFileURL url: URL) -> Bool {
+        let key = filePathKey(for: url)
+        return videos.contains { video in
+            filePathKey(for: video) == key
+        }
+    }
+
+    static func containsVideo(in videos: [LessonVideo], matchingFileName fileName: String) -> Bool {
+        let trimmedFileName = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedFileName.isEmpty else { return false }
+        return videos.contains { video in
+            guard let existingKey = filePathKey(for: video) else { return false }
+            return existingKey == trimmedFileName || existingKey.hasSuffix("/\(trimmedFileName)")
+        }
+    }
+
+    static func containsVideo(in videos: [LessonVideo], matchingContentOf url: URL) -> Bool {
+        guard let newAttrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let newSize = newAttrs[.size] as? Int64, newSize > 0 else { return false }
+        return videos.contains { video in
+            guard let existingURL = video.fileURL,
+                  let existingAttrs = try? FileManager.default.attributesOfItem(atPath: existingURL.path),
+                  let existingSize = existingAttrs[.size] as? Int64, existingSize > 0 else { return false }
+            return existingSize == newSize
+        }
+    }
+
+    static func logVideos(rawVideos: [LessonVideo], uniqueVideos: [LessonVideo], context: String) async {
+        print("RAW VIDEO COUNT:", rawVideos.count)
+        print("UNIQUE VIDEO COUNT:", uniqueVideos.count)
+        for video in rawVideos {
+            let path = filePathKey(for: video) ?? "nil"
+            let duration = await durationDescription(for: video.fileURL)
+            let fileSize = fileSizeDescription(for: video.fileURL)
+            print(
+                "id:", String(describing: video.persistentModelID),
+                "title:", video.title,
+                "date:", video.lessonDate ?? video.recordedAt,
+                "duration:", duration,
+                "path:", path,
+                "fileSize:", fileSize
+            )
+        }
+    }
+
+    private static func filePathKey(for video: LessonVideo) -> String? {
+        if let url = video.fileURL {
+            return filePathKey(for: url)
+        }
+
+        guard let rawValue = video.fileURLString?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return nil
+        }
+
+        if let url = URL(string: rawValue), url.isFileURL {
+            return filePathKey(for: url)
+        }
+
+        return rawValue
+    }
+
+    private static func filePathKey(for url: URL) -> String {
+        url.resolvingSymlinksInPath().path
+    }
+
+    private static func contentKey(for video: LessonVideo) -> String? {
+        guard let url = video.fileURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let fileSize = attrs[.size] as? Int64, fileSize > 0 else {
+            return nil
+        }
+        return "size:\(fileSize)"
+    }
+
+    private static func fallbackKey(for video: LessonVideo) -> String {
+        let date = video.lessonDate ?? video.recordedAt
+        return "\(video.title)|\(date.timeIntervalSinceReferenceDate)"
+    }
+
+    private static func durationDescription(for url: URL?) async -> String {
+        guard let url else { return "unknown" }
+        let asset = AVURLAsset(url: url)
+        do {
+            let seconds = try await asset.load(.duration).seconds
+            return seconds.isFinite ? "\(seconds)" : "unknown"
+        } catch {
+            return "unknown"
+        }
+    }
+
+    private static func fileSizeDescription(for url: URL?) -> String {
+        guard let url,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64 else {
+            return "unknown"
+        }
+        return "\(size) bytes"
+    }
+}
+
+private enum LessonTimelineBuilder {
+    static func days(for student: Student) -> [LessonTimelineDay] {
+        var days: [Date: LessonTimelineDay] = [:]
+        let calendar = Calendar.current
+
+        for lesson in student.lessons {
+            let date = calendar.startOfDay(for: lesson.scheduledAt)
+            days[date, default: LessonTimelineDay(date: date)].appointments.append(lesson)
+        }
+        for note in student.sessionNotes {
+            let date = calendar.startOfDay(for: note.sessionDate)
+            days[date, default: LessonTimelineDay(date: date)].notes.append(note)
+        }
+        for video in LessonVideoDisplayStore.uniqueVideos(in: student.videos) {
+            let date = calendar.startOfDay(for: video.lessonDate ?? video.recordedAt)
+            days[date, default: LessonTimelineDay(date: date)].swingVideos.append(video)
+        }
+        for analysis in student.coachAnalysisVideos {
+            let date = calendar.startOfDay(for: analysis.lessonDate ?? analysis.recordedAt)
+            days[date, default: LessonTimelineDay(date: date)].analysisVideos.append(analysis)
+        }
+
+        return days.values.sorted { $0.date > $1.date }
+    }
+
+    static func day(for student: Student, on date: Date) -> LessonTimelineDay {
+        days(for: student).first { Calendar.current.isDate($0.date, inSameDayAs: date) }
+            ?? LessonTimelineDay(date: Calendar.current.startOfDay(for: date))
+    }
+}
+
+struct LessonTimelineSection: View {
+    @Bindable var student: Student
+    let sessionStateManager: SessionStateManager
+    let onCaptureVideo: (Date) -> Void
+    let onAddVideo: (Date) -> Void
+    let onPlayVideo: (LessonVideo, Student) -> Void
+    let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
+    let onShareNote: (LessonSessionNote) -> Void
+    let onAddSessionNote: (Date) -> Void
+    let onEditNote: (LessonSessionNote) -> Void
+    let onEditVideo: (LessonVideo) -> Void
+    let onEditAnalysis: (CoachAnalysisVideo) -> Void
+
+    private var days: [LessonTimelineDay] {
+        LessonTimelineBuilder.days(for: student)
+    }
+
+    var body: some View {
+        Section("Lesson Timeline") {
+            timelineActionButtons
+
+            if days.isEmpty {
+                Text("No lesson sessions yet")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(days) { day in
+                    NavigationLink {
+                        LessonDayDetailView(
+                            student: student,
+                            date: day.date,
+                            sessionStateManager: sessionStateManager,
+                            restoreComparisonOnAppear: false,
+                            onCaptureVideo: onCaptureVideo,
+                            onAddVideo: onAddVideo,
+                            onPlayVideo: onPlayVideo,
+                            onPlayCoachAnalysis: onPlayCoachAnalysis,
+                            onShareNote: onShareNote,
+                            onAddSessionNote: onAddSessionNote,
+                            onEditNote: onEditNote,
+                            onEditVideo: onEditVideo,
+                            onEditAnalysis: onEditAnalysis
+                        )
+                    } label: {
+                        LessonTimelineCard(day: day)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                }
+            }
+        }
+        .listRowBackground(StudentDetailSectionTint.lessons)
+    }
+
+    @ViewBuilder
+    private var timelineActionButtons: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                timelineButton(
+                    title: "Add Lesson Notes",
+                    systemImage: "note.text.badge.plus",
+                    action: { onAddSessionNote(.now) }
+                )
+                timelineButton(
+                    title: "Add Video",
+                    systemImage: "video.badge.plus",
+                    action: { onAddVideo(.now) }
+                )
+            }
+
+            VStack(spacing: 8) {
+                timelineButton(
+                    title: "Add Lesson Notes",
+                    systemImage: "note.text.badge.plus",
+                    action: { onAddSessionNote(.now) }
+                )
+                timelineButton(
+                    title: "Add Video",
+                    systemImage: "video.badge.plus",
+                    action: { onAddVideo(.now) }
+                )
+            }
+        }
+    }
+
+    private func timelineButton(title: LocalizedStringKey, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+        }
+        .buttonStyle(.bordered)
+    }
+}
+
+struct LessonTimelineCard: View {
+    let day: LessonTimelineDay
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(day.date, format: .dateTime.weekday(.wide).month(.wide).day().year())
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+
+            if !day.appointments.isEmpty {
+                Text(day.appointments.sorted { $0.scheduledAt < $1.scheduledAt }
+                    .map { $0.scheduledAt.formatted(date: .omitted, time: .shortened) }
+                    .joined(separator: ", "))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                LessonTimelineMetricChip(label: "Notes", value: day.notes.count, systemImage: "note.text")
+                LessonTimelineMetricChip(label: "Videos", value: day.swingVideos.count, systemImage: "video")
+                LessonTimelineMetricChip(label: "Analysis", value: day.analysisVideos.count, systemImage: "figure.golf")
+                LessonTimelineMetricChip(label: "Practice", value: day.assignmentCount, systemImage: "checklist")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct LessonTimelineMetricChip: View {
+    let label: LocalizedStringKey
+    let value: Int
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.purple)
+                .frame(width: 16)
+
+            Text(label)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Spacer(minLength: 4)
+
+            Text("\(value)")
+                .fontWeight(.semibold)
+                .lineLimit(1)
+        }
+        .font(.caption)
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(Color(.tertiarySystemGroupedBackground))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(.quaternary, lineWidth: 0.5)
+            }
+    }
+}
+
+struct LessonDayDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var student: Student
+    let date: Date
+    let sessionStateManager: SessionStateManager
+    let restoreComparisonOnAppear: Bool
+    let onCaptureVideo: (Date) -> Void
+    let onAddVideo: (Date) -> Void
+    let onPlayVideo: (LessonVideo, Student) -> Void
+    let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
+    let onShareNote: (LessonSessionNote) -> Void
+    let onAddSessionNote: (Date) -> Void
+    let onEditNote: (LessonSessionNote) -> Void
+    let onEditVideo: (LessonVideo) -> Void
+    let onEditAnalysis: (CoachAnalysisVideo) -> Void
+
+    @State private var notePendingDeletion: LessonSessionNote?
+    @State private var videoPendingDeletion: LessonVideo?
+    @State private var analysisPendingDeletion: CoachAnalysisVideo?
+    @State private var lessonForCalendar: LessonAppointment?
+    @State private var isComparingVideos = false
+
+    private var day: LessonTimelineDay {
+        LessonTimelineBuilder.day(for: student, on: date)
+    }
+
+    private var uniqueStudentVideos: [LessonVideo] {
+        LessonVideoDisplayStore.uniqueVideos(in: student.videos)
+    }
+
+    private var savedComparisonVideosAvailable: Bool {
+        let state = sessionStateManager.state
+        return student.videos.contains {
+            $0.fileURL != nil && sessionStateManager.matches($0, storedIdentifier: state.beforeComparisonVideoID)
+        } && student.videos.contains {
+            $0.fileURL != nil && sessionStateManager.matches($0, storedIdentifier: state.afterComparisonVideoID)
+        }
+    }
+
+    var body: some View {
+        Form {
+            scheduledLessonsSection
+            lessonNotesSection
+            lessonVideosSection
+            coachAnalysisSection
+        }
+        .navigationTitle(date.formatted(date: .abbreviated, time: .omitted))
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $lessonForCalendar) { lesson in
+            CalendarEventEditor(student: student, lesson: lesson)
+        }
+        .sheet(isPresented: $isComparingVideos) {
+            SwingComparisonSelectionView(
+                student: student,
+                lessonDate: date,
+                sessionStateManager: sessionStateManager,
+                restoreComparisonOnAppear: restoreComparisonOnAppear
+            )
+        }
+        .task {
+            sessionStateManager.selectLessonDate(date, preservingComparison: restoreComparisonOnAppear)
+            if restoreComparisonOnAppear && sessionStateManager.state.hasComparison && savedComparisonVideosAvailable {
+                isComparingVideos = true
+            }
+        }
+        .alert("Delete Lesson Notes", isPresented: Binding(
+            get: { notePendingDeletion != nil },
+            set: { if !$0 { notePendingDeletion = nil } }
+        ), presenting: notePendingDeletion) { note in
+            Button("Delete", role: .destructive) {
+                student.sessionNotes.removeAll { $0.persistentModelID == note.persistentModelID }
+                modelContext.delete(note)
+                notePendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { notePendingDeletion = nil }
+        } message: { _ in
+            Text("Are you sure you want to delete these lesson notes? This cannot be undone.")
+        }
+        .alert("Delete Video", isPresented: Binding(
+            get: { videoPendingDeletion != nil },
+            set: { if !$0 { videoPendingDeletion = nil } }
+        ), presenting: videoPendingDeletion) { video in
+            Button("Delete", role: .destructive) {
+                VideoFileStore.deleteStoredVideoFile(for: video)
+                student.videos.removeAll { $0.persistentModelID == video.persistentModelID }
+                modelContext.delete(video)
+                videoPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { videoPendingDeletion = nil }
+        } message: { _ in
+            Text("Are you sure you want to delete this video? This cannot be undone.")
+        }
+        .alert("Delete Coach Analysis Video", isPresented: Binding(
+            get: { analysisPendingDeletion != nil },
+            set: { if !$0 { analysisPendingDeletion = nil } }
+        ), presenting: analysisPendingDeletion) { analysis in
+            Button("Delete", role: .destructive) {
+                if let url = analysis.fileURL { try? FileManager.default.removeItem(at: url) }
+                student.coachAnalysisVideos.removeAll { $0.persistentModelID == analysis.persistentModelID }
+                modelContext.delete(analysis)
+                analysisPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { analysisPendingDeletion = nil }
+        } message: { _ in
+            Text("Are you sure you want to delete this coach analysis video? This cannot be undone.")
+        }
+    }
+
+    private var scheduledLessonsSection: some View {
+        Section("Scheduled Lesson") {
+            if day.appointments.isEmpty {
+                Text("No lesson scheduled for this date")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(day.appointments.sorted { $0.scheduledAt < $1.scheduledAt }) { lesson in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(lesson.title)
+                                .font(.headline)
+                            Spacer()
+                            Toggle("Done", isOn: Binding(
+                                get: { lesson.isCompleted },
+                                set: { lesson.isCompleted = $0 }
+                            ))
+                            .labelsHidden()
+                        }
+                        Text(lesson.scheduledAt, format: .dateTime.hour().minute())
+                            .foregroundStyle(.secondary)
+                        if !lesson.location.isEmpty {
+                            Label(lesson.location, systemImage: "mappin.and.ellipse")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !lesson.notes.isEmpty {
+                            Text(lesson.notes)
+                                .font(.subheadline)
+                        }
+                        HStack {
+                            Label(lesson.reminderLeadTime.rawValue, systemImage: "bell")
+                            Spacer()
+                            Button {
+                                lessonForCalendar = lesson
+                            } label: {
+                                Label("Calendar", systemImage: "calendar.badge.plus")
+                            }
+                        }
+                        .font(.caption)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onDelete { offsets in
+                    let lessons = day.appointments.sorted { $0.scheduledAt < $1.scheduledAt }
+                    for index in offsets {
+                        let lesson = lessons[index]
+                        student.lessons.removeAll { $0.persistentModelID == lesson.persistentModelID }
+                        modelContext.delete(lesson)
+                    }
+                }
+            }
+        }
+        .listRowBackground(StudentDetailSectionTint.lessons)
+    }
+
+    private var lessonNotesSection: some View {
+        Section("Lesson Session Notes") {
+            Button {
+                onAddSessionNote(date)
+            } label: {
+                Label("Add Lesson Notes", systemImage: "note.text.badge.plus")
+            }
+
+            if day.notes.isEmpty {
+                Text("No notes added yet")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(day.notes.sorted { $0.sessionDate > $1.sessionDate }) { note in
+                    SessionNoteCard(note: note) {
+                        onEditNote(note)
+                    } onShare: {
+                        onShareNote(note)
+                    }
+                }
+                .onDelete { offsets in
+                    let notes = day.notes.sorted { $0.sessionDate > $1.sessionDate }
+                    if let index = offsets.first { notePendingDeletion = notes[index] }
+                }
+            }
+        }
+        .listRowBackground(StudentDetailSectionTint.notes)
+    }
+
+    private var lessonVideosSection: some View {
+        Section("Lesson Videos") {
+            Button {
+                onCaptureVideo(date)
+            } label: {
+                Label("Capture Swing Video", systemImage: "camera")
+            }
+            Button {
+                onAddVideo(date)
+            } label: {
+                Label("Import / Add Video", systemImage: "video.badge.plus")
+            }
+            if uniqueStudentVideos.filter({ $0.fileURL != nil }).count >= 2 {
+                Button {
+                    isComparingVideos = true
+                } label: {
+                    Label("Compare Videos", systemImage: "square.split.2x1")
+                }
+            }
+
+            if day.swingVideos.isEmpty {
+                Text("No swing videos saved")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(day.swingVideos.sorted { $0.recordedAt > $1.recordedAt }) { video in
+                    LessonVideoRow(
+                        video: video,
+                        defaultFocusNotes: "",
+                        defaultProblemNotes: "",
+                        onPlay: { onPlayVideo(video, student) },
+                        onEdit: { onEditVideo(video) }
+                    )
+                }
+                .onDelete { offsets in
+                    let videos = day.swingVideos.sorted { $0.recordedAt > $1.recordedAt }
+                    if let index = offsets.first { videoPendingDeletion = videos[index] }
+                }
+            }
+        }
+        .listRowBackground(StudentDetailSectionTint.videos)
+    }
+
+    private var coachAnalysisSection: some View {
+        Section("Coach Analysis Videos") {
+            if day.analysisVideos.isEmpty {
+                Text("No coach analysis videos saved")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(day.analysisVideos.sorted { $0.recordedAt > $1.recordedAt }) { analysis in
+                    SessionAnalysisRow(analysis: analysis) {
+                        onPlayCoachAnalysis(analysis)
+                    } onEdit: {
+                        onEditAnalysis(analysis)
+                    }
+                }
+                .onDelete { offsets in
+                    let analyses = day.analysisVideos.sorted { $0.recordedAt > $1.recordedAt }
+                    if let index = offsets.first { analysisPendingDeletion = analyses[index] }
+                }
+            }
+        }
+        .listRowBackground(StudentDetailSectionTint.coachAnalysis)
+    }
+}
 
 struct LessonSessionGroup: Identifiable {
     let date: Date
@@ -2745,7 +4931,7 @@ struct LessonSessionsSection: View {
     var sessionGroups: [LessonSessionGroup] {
         var groups: [Date: LessonSessionGroup] = [:]
         let cal = Calendar.current
-        for video in student.videos {
+        for video in LessonVideoDisplayStore.uniqueVideos(in: student.videos) {
             let day = cal.startOfDay(for: video.lessonDate ?? video.recordedAt)
             if groups[day] == nil { groups[day] = LessonSessionGroup(date: day) }
             groups[day]!.swingVideos.append(video)
@@ -4448,6 +6634,17 @@ struct AddLessonView: View {
     }
 }
 
+struct LessonVideoImport: Transferable {
+    let storedURL: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { receivedFile in
+            let storedURL = try VideoFileStore.copyVideo(from: receivedFile.file)
+            return LessonVideoImport(storedURL: storedURL)
+        }
+    }
+}
+
 struct AddVideoView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var student: Student
@@ -4456,6 +6653,14 @@ struct AddVideoView: View {
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var pendingVideoURL: URL?
     @State private var importError: String?
+    @State private var isImportingVideo = false
+    @State private var isSavingVideo = false
+    @State private var savedPendingVideo = false
+
+    init(student: Student, defaultDate: Date = .now) {
+        self.student = student
+        _lessonDate = State(initialValue: defaultDate)
+    }
 
     var autoTitle: String {
         "Lesson Video — \(lessonDate.formatted(date: .abbreviated, time: .omitted))"
@@ -4479,13 +6684,22 @@ struct AddVideoView: View {
                         Label("Capture Video", systemImage: "camera")
                     }
 
-                    PhotosPicker(selection: $selectedVideoItem, matching: .videos) {
+                    PhotosPicker(
+                        selection: $selectedVideoItem,
+                        matching: .videos,
+                        preferredItemEncoding: .current
+                    ) {
                         Label("Import from Photos", systemImage: "photo.on.rectangle")
                     }
+                    .disabled(isImportingVideo || isSavingVideo)
 
                     if let pendingVideoURL {
                         Label(pendingVideoURL.lastPathComponent, systemImage: "checkmark.circle")
                             .foregroundStyle(.green)
+                    }
+
+                    if isImportingVideo {
+                        ProgressView("Importing video...")
                     }
 
                     if let importError {
@@ -4498,42 +6712,93 @@ struct AddVideoView: View {
             .navigationTitle("Add Video")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        discardPendingVideoIfNeeded()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let video = LessonVideo(
-                            title: autoTitle,
-                            recordedAt: lessonDate,
-                            fileURLString: pendingVideoURL.map(VideoFileStore.persistedFileName),
-                            lessonDate: lessonDate
-                        )
-                        student.videos.append(video)
-                        dismiss()
+                        saveVideo()
                     }
-                    .disabled(pendingVideoURL == nil)
+                    .disabled(pendingVideoURL == nil || isImportingVideo || isSavingVideo)
                 }
             }
             .sheet(isPresented: $showCamera) {
                 VideoCaptureView { url in
                     do {
-                        pendingVideoURL = try VideoFileStore.copyVideo(from: url)
+                        let storedURL = try VideoFileStore.copyVideo(from: url)
+                        replacePendingVideo(with: storedURL)
+                        Task {
+                            await VideoFileStore.logVideoImport(url: storedURL, source: "camera picker")
+                        }
                     } catch {
-                        importError = error.localizedDescription
+                        print("DEBUG LessonVideo camera import failed: fileURL=\(url.path) error=\(error.localizedDescription)")
+                        importError = VideoFileStore.importFailureMessage(error)
                     }
                 }
             }
             .onChange(of: selectedVideoItem) { _, newItem in
                 guard let newItem else { return }
                 Task {
+                    isImportingVideo = true
+                    defer { isImportingVideo = false }
                     do {
-                        pendingVideoURL = try await VideoFileStore.saveVideo(from: newItem)
+                        guard let importedVideo = try await newItem.loadTransferable(type: LessonVideoImport.self) else {
+                            throw CocoaError(.fileReadUnknown)
+                        }
+                        replacePendingVideo(with: importedVideo.storedURL)
+                        await VideoFileStore.logVideoImport(url: importedVideo.storedURL, source: "PhotosPicker movie")
                     } catch {
-                        importError = error.localizedDescription
+                        print("DEBUG LessonVideo PhotosPicker import failed: type=movie fileURL=unavailable error=\(error.localizedDescription)")
+                        importError = VideoFileStore.importFailureMessage(error)
                     }
                 }
             }
+            .onDisappear {
+                discardPendingVideoIfNeeded()
+            }
         }
+    }
+
+    private func replacePendingVideo(with url: URL) {
+        if let pendingVideoURL, pendingVideoURL != url, !savedPendingVideo {
+            VideoFileStore.deleteStoredVideoFile(fileName: VideoFileStore.persistedFileName(for: pendingVideoURL))
+        }
+        self.pendingVideoURL = url
+        importError = nil
+    }
+
+    private func saveVideo() {
+        guard !isSavingVideo, let pendingVideoURL else { return }
+        isSavingVideo = true
+
+        let fileName = VideoFileStore.persistedFileName(for: pendingVideoURL)
+        guard !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingFileURL: pendingVideoURL),
+              !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingFileName: fileName),
+              !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingContentOf: pendingVideoURL) else {
+            print("DEBUG LessonVideo save ignored duplicate record: fileURL=\(pendingVideoURL.path)")
+            savedPendingVideo = true
+            dismiss()
+            return
+        }
+
+        let video = LessonVideo(
+            title: autoTitle,
+            recordedAt: lessonDate,
+            fileURLString: fileName,
+            lessonDate: lessonDate
+        )
+        student.videos.append(video)
+        savedPendingVideo = true
+        print("DEBUG LessonVideo saved id=\(video.persistentModelID) path=\(pendingVideoURL.path) created=\(video.recordedAt)")
+        dismiss()
+    }
+
+    private func discardPendingVideoIfNeeded() {
+        guard !savedPendingVideo, let pendingVideoURL else { return }
+        VideoFileStore.deleteStoredVideoFile(fileName: VideoFileStore.persistedFileName(for: pendingVideoURL))
+        self.pendingVideoURL = nil
     }
 }
 
@@ -4868,7 +7133,7 @@ struct VideoLibraryView: View {
 
     var videos: [(student: Student, video: LessonVideo)] {
         students.flatMap { student in
-            student.videos.map { (student, $0) }
+            LessonVideoDisplayStore.uniqueVideos(in: student.videos).map { (student, $0) }
         }
         .sorted { $0.video.recordedAt > $1.video.recordedAt }
     }
@@ -5286,6 +7551,31 @@ struct DrawingGestureCapture: UIViewRepresentable {
                 return distance >= 12
             }
         }
+    }
+}
+
+private struct DrawingTogglePill: View {
+    let isActive: Bool
+    let selectedColor: SwingDrawingColor
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: "pencil.tip.crop.circle")
+                Text("Draw")
+                    .font(.caption.weight(.bold))
+                Circle()
+                    .fill(selectedColor.color)
+                    .frame(width: 10, height: 10)
+            }
+            .frame(height: 34)
+            .padding(.horizontal, 12)
+        }
+        .foregroundStyle(.white)
+        .background(isActive ? Color.purple.opacity(0.85) : Color.black.opacity(0.72))
+        .clipShape(Capsule())
+        .buttonStyle(.plain)
     }
 }
 
@@ -8006,14 +10296,19 @@ enum VideoFileStore {
         url.lastPathComponent
     }
 
-    static func saveVideo(from item: PhotosPickerItem) async throws -> URL {
-        guard let data = try await item.loadTransferable(type: Data.self) else {
-            throw CocoaError(.fileReadCorruptFile)
+    static func logVideoImport(url: URL, source: String) async {
+        let asset = AVURLAsset(url: url)
+        do {
+            let duration = try await asset.load(.duration).seconds
+            let fileType = url.pathExtension.isEmpty ? "unknown" : url.pathExtension
+            print("DEBUG LessonVideo import source=\(source) type=\(fileType) fileURL=\(url.path) duration=\(duration)")
+        } catch {
+            print("DEBUG LessonVideo import metadata failed source=\(source) type=\(url.pathExtension) fileURL=\(url.path) error=\(error.localizedDescription)")
         }
+    }
 
-        let destination = try makeDestinationURL(fileExtension: "mov")
-        try data.write(to: destination, options: .atomic)
-        return destination
+    static func importFailureMessage(_ error: Error) -> String {
+        "The video could not be imported: \(error.localizedDescription). If this is an HEVC, HDR, or Cinematic video in Simulator, try an H.264 MP4 or test on a real iPhone."
     }
 
     nonisolated static func copyVideo(from url: URL) throws -> URL {
