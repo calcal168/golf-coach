@@ -2792,6 +2792,7 @@ struct CoachAnalysisView: View {
     @State private var isSavingToPhotos = false
     @State private var saveStatus: VideoSaveStatus?
     @State private var isShowingSaveStatus = false
+    @State private var isShowingAnalysisInfo = false
 
     init(analysis: CoachAnalysisVideo) {
         self.analysis = analysis
@@ -2903,6 +2904,14 @@ struct CoachAnalysisView: View {
                             }
                             .disabled(strokes.isEmpty)
 
+                            if hasAnalysisNotes {
+                                Button {
+                                    isShowingAnalysisInfo = true
+                                } label: {
+                                    Label("Info", systemImage: "info.circle")
+                                }
+                            }
+
                             Button {
                                 saveVideoToPhotos(url)
                             } label: {
@@ -2921,66 +2930,7 @@ struct CoachAnalysisView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 if player != nil {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            Button {
-                                togglePlayback()
-                            } label: {
-                                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button {
-                                isDrawingMode.toggle()
-                                if isDrawingMode {
-                                    player?.pause()
-                                    isPlaying = false
-                                }
-                            } label: {
-                                Label(isDrawingMode ? "Done Drawing" : "Draw", systemImage: "pencil.tip")
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .font(.caption.weight(.semibold))
-
-                        VideoReviewControls(
-                            currentTime: $currentTime,
-                            duration: duration,
-                            playbackRate: playbackRate,
-                            frameRate: frameRate,
-                            showsDetailedControls: true,
-                            showsTrimControl: false,
-                            onScrubBegan: {
-                                isScrubbing = true
-                                player?.pause()
-                                isPlaying = false
-                            },
-                            onScrubChanged: { time in
-                                seek(to: time)
-                            },
-                            onScrubEnded: { time in
-                                isScrubbing = false
-                                seek(to: time)
-                            },
-                            onRateSelected: { rate in
-                                setPlaybackRate(rate)
-                            },
-                            onStepFrameBackward: {
-                                stepFrame(direction: -1)
-                            },
-                            onStepFrameForward: {
-                                stepFrame(direction: 1)
-                            },
-                            onTrim: { }
-                        )
-
-                        if !analysis.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(analysis.notes)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                    simplePlaybackControls
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                     .background(.regularMaterial)
@@ -3003,6 +2953,73 @@ struct CoachAnalysisView: View {
             } message: {
                 Text(saveStatus?.message ?? "")
             }
+            .sheet(isPresented: $isShowingAnalysisInfo) {
+                NavigationStack {
+                    ScrollView {
+                        Text(analysisNotes)
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle("Analysis Info")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                isShowingAnalysisInfo = false
+                            }
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
+    }
+
+    private var analysisNotes: String {
+        analysis.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasAnalysisNotes: Bool {
+        !analysisNotes.isEmpty
+    }
+
+    private var simplePlaybackControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Button {
+                    togglePlayback()
+                } label: {
+                    Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Spacer()
+
+                Text("\(timeString(currentTime)) / \(timeString(duration))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { currentTime },
+                    set: { value in
+                        currentTime = min(max(value, 0), duration)
+                    }
+                ),
+                in: 0...max(duration, 0.1),
+                onEditingChanged: { editing in
+                    if editing {
+                        isScrubbing = true
+                        player?.pause()
+                        isPlaying = false
+                    } else {
+                        isScrubbing = false
+                        seek(to: currentTime)
+                    }
+                }
+            )
         }
     }
 
@@ -3717,14 +3734,19 @@ struct SwingComparisonView: View {
         GeometryReader { geometry in
             let isPad = UIDevice.current.userInterfaceIdiom == .pad
             let isLandscape = geometry.size.width > geometry.size.height
+            let contentSize = CGSize(
+                width: geometry.size.width,
+                height: max(0, geometry.size.height - geometry.safeAreaInsets.top)
+            )
             ZStack(alignment: .topLeading) {
                 if isLandscape {
-                    landscapeContent(size: geometry.size)
+                    landscapeContent(size: contentSize)
                 } else {
-                    portraitContent(size: geometry.size, isPad: isPad)
+                    portraitContent(size: contentSize, isPad: isPad)
                 }
 
                 floatingBackButton
+                floatingMoreControlsButton
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -3768,28 +3790,15 @@ struct SwingComparisonView: View {
     }
 
     private func portraitContent(size: CGSize, isPad: Bool) -> some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                comparisonContent(size: size, isLandscape: false, isSideBySide: isPad)
-                    .padding(.top, 4)
-            }
-            .scrollIndicators(.hidden)
-
-            portraitControlBar
-        }
-        .safeAreaPadding(.bottom, 10)
+        comparisonContent(size: size, isLandscape: false, isSideBySide: isPad)
+            .padding(.top, 4)
+            .background(Color(.systemBackground))
     }
 
     private func landscapeContent(size: CGSize) -> some View {
-        VStack(spacing: 6) {
-            comparisonContent(size: size, isLandscape: true, isSideBySide: true)
-
-            landscapeControlBar
-                .padding(.horizontal, 12)
-        }
+        comparisonContent(size: size, isLandscape: true, isSideBySide: true)
         .background(Color(.systemBackground))
         .safeAreaPadding(.top, 4)
-        .safeAreaPadding(.bottom, 10)
     }
 
     private var floatingBackButton: some View {
@@ -3810,21 +3819,82 @@ struct SwingComparisonView: View {
         .accessibilityLabel("Back")
     }
 
-    private var landscapeControlBar: some View {
-        VStack(spacing: 5) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    drawingControlsContent
-                    coachAnalysisButton
-                    playbackControlsContent
+    private var floatingMoreControlsButton: some View {
+        HStack {
+            Spacer()
+            Menu {
+                Button {
+                    isDrawingEnabled.toggle()
+                } label: {
+                    Label(isDrawingEnabled ? "Stop Drawing" : "Draw Mode", systemImage: isDrawingEnabled ? "pencil.slash" : "pencil.tip")
                 }
-                .padding(.horizontal, 1)
+
+                Button {
+                    drawingTool = .line
+                    isDrawingEnabled = true
+                } label: {
+                    Label(drawingTool == .line ? "Line Tool Selected" : "Line Tool", systemImage: drawingTool == .line ? "checkmark" : "line.diagonal")
+                }
+
+                Button {
+                    drawingTool = .circle
+                    isDrawingEnabled = true
+                } label: {
+                    Label(drawingTool == .circle ? "Circle Tool Selected" : "Circle Tool", systemImage: drawingTool == .circle ? "checkmark" : "circle")
+                }
+
+                Button(role: .destructive) {
+                    clearDrawings()
+                } label: {
+                    Label("Clear Drawing", systemImage: "trash")
+                }
+                .disabled(activeStrokes.isEmpty)
+
+                Divider()
+
+                Button {
+                    toggleCoachAnalysisRecording()
+                } label: {
+                    Label(coachAnalysisButtonTitle, systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "waveform.path.ecg")
+                }
+                .disabled(coachAnalysisRecorder.isRecording && !isRecordingCoachAnalysis)
+
+                Divider()
+
+                Button {
+                    playBoth()
+                } label: {
+                    Label("Play All", systemImage: "play.fill")
+                }
+                .disabled(isSeekingBefore || isSeekingAfter)
+
+                Button {
+                    pauseBoth()
+                } label: {
+                    Label("Pause All", systemImage: "pause.fill")
+                }
+
+                Menu {
+                    speedButton(title: "0.5x", rate: 0.5)
+                    speedButton(title: "1.0x", rate: 1.0)
+                } label: {
+                    Label("Speed \(playbackRate, specifier: "%.1f")x", systemImage: "speedometer")
+                }
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 40, height: 40)
+                    .contentShape(Circle())
             }
-            .font(.caption)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+            .background(.ultraThinMaterial, in: Circle())
+            .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+            .accessibilityLabel("More Controls")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.bar, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.trailing, 12)
+        .padding(.top, 8)
     }
 
     @ViewBuilder
@@ -3854,24 +3924,20 @@ struct SwingComparisonView: View {
     }
 
     private func videoSurfaceHeight(for size: CGSize, isLandscape: Bool, isSideBySide: Bool) -> CGFloat {
+        let paneChromeHeight: CGFloat = 76
+        let topReserve: CGFloat = isLandscape ? 8 : 12
+
         if isLandscape {
-            let topLabelHeight: CGFloat = 22
-            let sliderHeight: CGFloat = 56
-            let toolbarHeight: CGFloat = 70
-            let safeAreaReserve: CGFloat = 18
-            let spacing: CGFloat = 18
-            return max(120, size.height - topLabelHeight - sliderHeight - toolbarHeight - safeAreaReserve - spacing)
+            return max(96, size.height - paneChromeHeight - topReserve)
         }
 
-        let controlsHeight: CGFloat = 112
-        let paneChromeHeight: CGFloat = 70
         if isSideBySide {
-            return max(220, size.height - controlsHeight - paneChromeHeight - 12)
+            return max(150, size.height - paneChromeHeight - topReserve)
         }
 
         let interPaneSpacing: CGFloat = 6
-        let availableVideoHeight = size.height - controlsHeight - (paneChromeHeight * 2) - interPaneSpacing - 12
-        return max(100, availableVideoHeight / 2)
+        let availableVideoHeight = size.height - (paneChromeHeight * 2) - interPaneSpacing - topReserve
+        return max(60, availableVideoHeight / 2)
     }
 
     private func beforePane(maxVideoHeight: CGFloat, compact: Bool) -> some View {
@@ -3936,99 +4002,6 @@ struct SwingComparisonView: View {
                 handleScrubbingChange(editing)
             }
         )
-    }
-
-    private var drawingControls: some View {
-        HStack(spacing: 8) {
-            drawingControlsContent
-        }
-        .font(.caption)
-        .padding(.horizontal, 8)
-    }
-
-    @ViewBuilder
-    private var drawingControlsContent: some View {
-        DrawingTogglePill(
-            isActive: isDrawingEnabled,
-            selectedColor: drawingColor
-        ) {
-            isDrawingEnabled.toggle()
-        }
-
-        if isDrawingEnabled {
-            drawingToolButton("Line", tool: .line, icon: "line.diagonal")
-            drawingToolButton("Circle", tool: .circle, icon: "circle")
-            Button {
-                undoDrawing()
-            } label: {
-                Image(systemName: "arrow.uturn.backward")
-            }
-            .buttonStyle(.bordered)
-            .disabled(activeStrokes.isEmpty)
-            Button(role: .destructive) {
-                clearDrawings()
-            } label: {
-                Text("Clear")
-            }
-            .buttonStyle(.bordered)
-            .disabled(activeStrokes.isEmpty)
-        }
-    }
-
-    private var portraitControlBar: some View {
-        VStack(spacing: 6) {
-            drawingControls
-            sharedPlaybackControls
-        }
-        .padding(.top, 6)
-        .background(.bar)
-    }
-
-    private var sharedPlaybackControls: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                coachAnalysisButton
-                playbackControlsContent
-            }
-            .padding(.horizontal, 8)
-        }
-        .font(.caption)
-        .padding(.bottom, 10)
-    }
-
-    @ViewBuilder
-    private var playbackControlsContent: some View {
-        Button {
-            playBoth()
-        } label: {
-            Label("Play Both", systemImage: "play.fill")
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(isSeekingBefore || isSeekingAfter)
-
-        Button {
-            pauseBoth()
-        } label: {
-            Label("Pause Both", systemImage: "pause.fill")
-        }
-        .buttonStyle(.bordered)
-
-        speedMenu
-    }
-
-    private var coachAnalysisButton: some View {
-        Button {
-            toggleCoachAnalysisRecording()
-        } label: {
-            Label(
-                coachAnalysisButtonTitle,
-                systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "waveform.path.ecg"
-            )
-        }
-        .buttonStyle(.bordered)
-        .tint(isRecordingCoachAnalysis ? .red : .orange)
-        .disabled(coachAnalysisRecorder.isRecording && !isRecordingCoachAnalysis)
-        .accessibilityLabel(isRecordingCoachAnalysis ? "Stop coach analysis recording" : "Start coach analysis recording")
     }
 
     private var coachAnalysisButtonTitle: LocalizedStringKey {
