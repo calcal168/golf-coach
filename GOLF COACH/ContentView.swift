@@ -61,7 +61,6 @@ struct LastSessionState: Codable, Equatable {
     var selectedLessonDate: Date?
     var beforeComparisonVideoID: Data?
     var afterComparisonVideoID: Data?
-    var comparisonLayoutMode: String?
     var playbackSpeed: Float = 1.0
     var beforeVideoProgress = 0.0
     var afterVideoProgress = 0.0
@@ -117,14 +116,12 @@ final class SessionStateManager {
     func updateComparison(
         beforeVideo: LessonVideo,
         afterVideo: LessonVideo,
-        layoutMode: ComparisonLayoutMode,
         playbackSpeed: Float,
         beforeProgress: Double,
         afterProgress: Double
     ) {
         state.beforeComparisonVideoID = identifierData(for: beforeVideo)
         state.afterComparisonVideoID = identifierData(for: afterVideo)
-        state.comparisonLayoutMode = layoutMode.rawValue
         state.playbackSpeed = playbackSpeed
         state.beforeVideoProgress = beforeProgress
         state.afterVideoProgress = afterProgress
@@ -152,7 +149,6 @@ final class SessionStateManager {
     private func clearComparison() {
         state.beforeComparisonVideoID = nil
         state.afterComparisonVideoID = nil
-        state.comparisonLayoutMode = nil
         state.playbackSpeed = 1.0
         state.beforeVideoProgress = 0
         state.afterVideoProgress = 0
@@ -278,7 +274,7 @@ struct ContentView: View {
             selectedCoachAnalysis = nil
             isPreparingCoachAnalysis = false
         }) { selection in
-            SimpleVideoPlayerSheet(title: selection.analysis.title, url: selection.url)
+            CoachAnalysisView(analysis: selection.analysis)
         }
     }
 
@@ -351,10 +347,6 @@ struct ContentView: View {
         if let date = sessionStateManager.state.selectedLessonDate {
             lines.append(date.formatted(date: .abbreviated, time: .omitted))
         }
-        if let rawMode = sessionStateManager.state.comparisonLayoutMode,
-           let mode = ComparisonLayoutMode(rawValue: rawMode) {
-            lines.append("\(String(localized: "Comparison Mode")): \(mode.resumeDescription)")
-        }
         return lines.joined(separator: "\n")
     }
 
@@ -371,18 +363,13 @@ struct ContentView: View {
     }
 
     private func openCoachAnalysis(_ analysis: CoachAnalysisVideo) {
-        guard let url = analysis.fileURL else {
-            print("DEBUG ContentView selectedCoachAnalysis ignored missing file: \(analysis.title)")
-            return
-        }
-
         guard selectedCoachAnalysis == nil, !isPreparingCoachAnalysis else {
             print("DEBUG ContentView selectedCoachAnalysis ignored duplicate tap: \(analysis.title)")
             return
         }
 
         isPreparingCoachAnalysis = true
-        selectedCoachAnalysis = CoachAnalysisPlaybackSelection(analysis: analysis, url: url)
+        selectedCoachAnalysis = CoachAnalysisPlaybackSelection(analysis: analysis)
         print("DEBUG ContentView selectedCoachAnalysis set: \(analysis.title)")
         isPreparingCoachAnalysis = false
     }
@@ -2722,6 +2709,11 @@ struct CoachAnalysisVideoSection: View {
                             Text(analysis.recordedAt, format: .dateTime.month().day().year().hour().minute())
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            if analysis.fileURL == nil {
+                                Text("Analysis not generated yet")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
 
                         Spacer()
@@ -2730,7 +2722,7 @@ struct CoachAnalysisVideoSection: View {
                             Button {
                                 openAnalysis(analysis)
                             } label: {
-                                Image(systemName: "play.circle")
+                                Label("Play", systemImage: "play.circle")
                             }
                             .buttonStyle(.borderless)
 
@@ -2738,9 +2730,20 @@ struct CoachAnalysisVideoSection: View {
                                 Image(systemName: "square.and.arrow.up")
                             }
                             .buttonStyle(.borderless)
+                        } else {
+                            Button {
+                                openAnalysis(analysis)
+                            } label: {
+                                Label("Create Analysis", systemImage: "record.circle")
+                            }
+                            .buttonStyle(.borderless)
                         }
                     }
                     .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        openAnalysis(analysis)
+                    }
                 }
                 .onDelete(perform: deleteAnalyses)
             }
@@ -2749,11 +2752,6 @@ struct CoachAnalysisVideoSection: View {
     }
 
     private func openAnalysis(_ analysis: CoachAnalysisVideo) {
-        guard analysis.fileURL != nil else {
-            print("DEBUG CoachAnalysisVideoSection selectedCoachAnalysis ignored missing file: \(analysis.title)")
-            return
-        }
-
         print("DEBUG CoachAnalysisVideoSection requested selectedCoachAnalysis: \(analysis.title)")
         onPlayCoachAnalysis(analysis)
     }
@@ -2770,53 +2768,390 @@ struct CoachAnalysisVideoSection: View {
     }
 }
 
-struct SimpleVideoPlayerSheet: View {
+struct CoachAnalysisView: View {
     @Environment(\.dismiss) private var dismiss
-    let title: String
-    let url: URL
-    @State private var player: AVPlayer
+    let analysis: CoachAnalysisVideo
+    @State private var player: AVPlayer?
+    @State private var currentTime = 0.0
+    @State private var duration = 0.0
+    @State private var frameRate: Float = 30
+    @State private var playbackRate: Float = 1.0
+    @State private var isPlaying = false
+    @State private var isScrubbing = false
+    @State private var timeObserver: Any?
+    @State private var isShowingCreateGuidance = false
+    @State private var isDrawingMode = false
+    @State private var selectedDrawingTool = SwingDrawingTool.line
+    @State private var selectedDrawingColor = SwingDrawingColor.yellow
+    @State private var strokes: [SwingAnalysisStroke] = []
+    @State private var currentStroke: SwingAnalysisStroke?
+    @State private var zoomScale: CGFloat = 1
+    @State private var zoomStartScale: CGFloat = 1
+    @State private var zoomOffset = CGSize.zero
+    @State private var zoomStartOffset = CGSize.zero
+    @State private var isSavingToPhotos = false
+    @State private var saveStatus: VideoSaveStatus?
+    @State private var isShowingSaveStatus = false
 
-    init(title: String, url: URL) {
-        self.title = title
-        self.url = url
-        _player = State(initialValue: AVPlayer(url: url))
+    init(analysis: CoachAnalysisVideo) {
+        self.analysis = analysis
+        _player = State(initialValue: analysis.fileURL.map { AVPlayer(url: $0) })
     }
 
     var body: some View {
         NavigationStack {
-            ControlledVideoPlayer(player: player, showsPlaybackControls: true)
-                .background(.black)
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") {
-                            player.pause()
-                            dismiss()
-                        }
-                    }
+            Group {
+                if let player {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .top) {
+                            ZStack {
+                                ControlledVideoPlayer(player: player, showsPlaybackControls: !isDrawingMode)
+                                    .background(.black)
 
+                                SwingDrawingOverlay(
+                                    strokes: $strokes,
+                                    currentStroke: $currentStroke,
+                                    selectedTool: $selectedDrawingTool,
+                                    selectedColor: $selectedDrawingColor,
+                                    isDrawingEnabled: isDrawingMode,
+                                    onUndo: undoLastStroke,
+                                    onZoomBegan: beginZoom,
+                                    onZoomChanged: { relativeScale in
+                                        updateZoom(relativeScale: relativeScale, in: proxy.size)
+                                    },
+                                    onZoomEnded: endZoom,
+                                    onZoomPanBegan: beginZoomPan,
+                                    onZoomPanChanged: { translation in
+                                        updateZoomPan(translation: translation, in: proxy.size)
+                                    }
+                                )
+                            }
+                            .scaleEffect(zoomScale)
+                            .offset(zoomOffset)
+
+                            HStack(alignment: .top) {
+                                if isDrawingMode {
+                                    DrawingToolPalette(
+                                        selectedTool: $selectedDrawingTool,
+                                        selectedColor: $selectedDrawingColor,
+                                        canUndo: !strokes.isEmpty,
+                                        onUndo: undoLastStroke
+                                    )
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                        }
+                        .clipped()
+                    }
+                } else {
+                    ContentUnavailableView {
+                        Label("Analysis not generated yet", systemImage: "waveform.path.ecg")
+                    } description: {
+                        Text("Create a coach analysis recording from the Swing Comparison screen or an individual swing video.")
+                    } actions: {
+                        Button {
+                            isShowingCreateGuidance = true
+                        } label: {
+                            Label("Create Analysis", systemImage: "record.circle")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+            .navigationTitle(analysis.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        player?.pause()
+                        dismiss()
+                    }
+                }
+
+                if let url = analysis.fileURL {
                     ToolbarItem(placement: .primaryAction) {
                         ShareLink(item: url) {
                             Label("Send", systemImage: "square.and.arrow.up")
                         }
                     }
+
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button {
+                                isDrawingMode.toggle()
+                                if isDrawingMode {
+                                    player?.pause()
+                                    isPlaying = false
+                                }
+                            } label: {
+                                Label(isDrawingMode ? "Stop Drawing" : "Draw Lines", systemImage: "pencil.and.outline")
+                            }
+
+                            Button {
+                                undoLastStroke()
+                            } label: {
+                                Label("Undo Line", systemImage: "arrow.uturn.backward")
+                            }
+                            .disabled(strokes.isEmpty)
+
+                            Button(role: .destructive) {
+                                clearStrokes()
+                            } label: {
+                                Label("Clear Lines", systemImage: "trash")
+                            }
+                            .disabled(strokes.isEmpty)
+
+                            Button {
+                                saveVideoToPhotos(url)
+                            } label: {
+                                Label("Save to Photos", systemImage: "photo.badge.plus")
+                            }
+                            .disabled(isSavingToPhotos)
+                        } label: {
+                            if isSavingToPhotos {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                        }
+                    }
                 }
-                .onAppear {
-                    prepareForPlayback()
+            }
+            .safeAreaInset(edge: .bottom) {
+                if player != nil {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Button {
+                                togglePlayback()
+                            } label: {
+                                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button {
+                                isDrawingMode.toggle()
+                                if isDrawingMode {
+                                    player?.pause()
+                                    isPlaying = false
+                                }
+                            } label: {
+                                Label(isDrawingMode ? "Done Drawing" : "Draw", systemImage: "pencil.tip")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .font(.caption.weight(.semibold))
+
+                        VideoReviewControls(
+                            currentTime: $currentTime,
+                            duration: duration,
+                            playbackRate: playbackRate,
+                            frameRate: frameRate,
+                            showsDetailedControls: true,
+                            showsTrimControl: false,
+                            onScrubBegan: {
+                                isScrubbing = true
+                                player?.pause()
+                                isPlaying = false
+                            },
+                            onScrubChanged: { time in
+                                seek(to: time)
+                            },
+                            onScrubEnded: { time in
+                                isScrubbing = false
+                                seek(to: time)
+                            },
+                            onRateSelected: { rate in
+                                setPlaybackRate(rate)
+                            },
+                            onStepFrameBackward: {
+                                stepFrame(direction: -1)
+                            },
+                            onStepFrameForward: {
+                                stepFrame(direction: 1)
+                            },
+                            onTrim: { }
+                        )
+
+                        if !analysis.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text(analysis.notes)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(.regularMaterial)
                 }
-                .onDisappear {
-                    player.pause()
-                }
+            }
+            .onAppear {
+                prepareForPlayback()
+            }
+            .onDisappear {
+                player?.pause()
+                removeTimeObserver()
+            }
+            .alert("Create Analysis", isPresented: $isShowingCreateGuidance) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Open Swing Comparison, tap Coach Analysis, then stop the recording to generate a playable analysis video.")
+            }
+            .alert(saveStatus?.title ?? "Save Video", isPresented: $isShowingSaveStatus) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(saveStatus?.message ?? "")
+            }
         }
     }
 
     private func prepareForPlayback() {
         Task { @MainActor in
+            guard let player else { return }
             player.pause()
             guard await VideoPlaybackReadiness.waitUntilReady(player.currentItem) else { return }
+            await loadPlaybackMetadata()
             await player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+            currentTime = 0
+            configureTimeObserver()
         }
+    }
+
+    private func togglePlayback() {
+        guard let player else { return }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    private func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        player?.rate = rate
+        isPlaying = rate > 0
+    }
+
+    private func seek(to seconds: Double) {
+        let targetSeconds = max(0, min(seconds, duration))
+        currentTime = targetSeconds
+        player?.seek(to: CMTime(seconds: targetSeconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func stepFrame(direction: Int) {
+        player?.pause()
+        isPlaying = false
+        let frameStep = 1 / max(Double(frameRate), 1)
+        seek(to: currentTime + (Double(direction) * frameStep))
+    }
+
+    private func configureTimeObserver() {
+        removeTimeObserver()
+        guard let player else { return }
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600), queue: .main) { time in
+            guard !isScrubbing else { return }
+            let seconds = time.seconds
+            if seconds.isFinite {
+                currentTime = max(0, min(seconds, duration))
+            }
+            isPlaying = player.rate != 0
+        }
+    }
+
+    private func removeTimeObserver() {
+        if let timeObserver {
+            player?.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+    }
+
+    @MainActor
+    private func loadPlaybackMetadata() async {
+        guard let url = analysis.fileURL else { return }
+        let asset = AVURLAsset(url: url)
+        let loadedDuration = (try? await asset.load(.duration).seconds) ?? 0
+        duration = loadedDuration.isFinite ? max(loadedDuration, 0) : 0
+
+        let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        if let track = tracks.first {
+            let loadedFrameRate = (try? await track.load(.nominalFrameRate)) ?? 0
+            if loadedFrameRate.isFinite, loadedFrameRate > 0 {
+                frameRate = loadedFrameRate
+            }
+        }
+    }
+
+    private func undoLastStroke() {
+        _ = strokes.popLast()
+    }
+
+    private func clearStrokes() {
+        strokes.removeAll()
+        currentStroke = nil
+    }
+
+    private func beginZoom() {
+        zoomStartScale = zoomScale
+    }
+
+    private func updateZoom(relativeScale: CGFloat, in size: CGSize) {
+        zoomScale = min(max(zoomStartScale * relativeScale, 1), 5)
+        zoomOffset = clampedZoomOffset(zoomOffset, scale: zoomScale, in: size)
+    }
+
+    private func endZoom() {
+        if zoomScale <= 1.01 {
+            withAnimation(.easeOut(duration: 0.18)) {
+                zoomScale = 1
+                zoomOffset = .zero
+            }
+        }
+    }
+
+    private func beginZoomPan() {
+        zoomStartOffset = zoomOffset
+    }
+
+    private func updateZoomPan(translation: CGSize, in size: CGSize) {
+        guard zoomScale > 1 else { return }
+        let proposedOffset = CGSize(
+            width: zoomStartOffset.width + translation.width,
+            height: zoomStartOffset.height + translation.height
+        )
+        zoomOffset = clampedZoomOffset(proposedOffset, scale: zoomScale, in: size)
+    }
+
+    private func clampedZoomOffset(_ offset: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
+        guard scale > 1 else { return .zero }
+        let horizontalLimit = (size.width * (scale - 1)) / 2
+        let verticalLimit = (size.height * (scale - 1)) / 2
+        return CGSize(
+            width: min(max(offset.width, -horizontalLimit), horizontalLimit),
+            height: min(max(offset.height, -verticalLimit), verticalLimit)
+        )
+    }
+
+    private func saveVideoToPhotos(_ url: URL) {
+        isSavingToPhotos = true
+        Task {
+            do {
+                try await PhotoLibraryVideoSaver.saveVideoToCameraRoll(url: url)
+                saveStatus = .success
+            } catch {
+                saveStatus = .failure(error.localizedDescription)
+            }
+            isSavingToPhotos = false
+            isShowingSaveStatus = true
+        }
+    }
+
+    private func timeString(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "0:00" }
+        let totalSeconds = max(Int(seconds), 0)
+        return "\(totalSeconds / 60):\(String(format: "%02d", totalSeconds % 60))"
     }
 }
 
@@ -3073,6 +3408,7 @@ struct SwingComparisonSelectionView: View {
             afterVideo: afterVideo,
             beforeURL: beforeURL,
             afterURL: afterURL,
+            student: student,
             sessionStateManager: sessionStateManager,
             restoredState: restoredState
         )
@@ -3291,30 +3627,6 @@ private struct ComparisonVideoThumbnailCard: View {
     }
 }
 
-enum ComparisonLayoutMode: String, CaseIterable, Identifiable {
-    case sideBySide
-    case stacked
-    case focus
-
-    var id: Self { self }
-
-    var label: LocalizedStringKey {
-        switch self {
-        case .sideBySide: return "Side-by-side"
-        case .stacked: return "Stacked"
-        case .focus: return "Single Focus"
-        }
-    }
-
-    var resumeDescription: String {
-        switch self {
-        case .sideBySide: return String(localized: "Side-by-side")
-        case .stacked: return String(localized: "Stacked")
-        case .focus: return String(localized: "Single Focus")
-        }
-    }
-}
-
 private enum ComparisonPane: String, CaseIterable, Identifiable {
     case before
     case after
@@ -3324,31 +3636,32 @@ private enum ComparisonPane: String, CaseIterable, Identifiable {
 }
 
 struct SwingComparisonView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     let beforeVideo: LessonVideo
     let afterVideo: LessonVideo
     private let beforeURL: URL
     private let afterURL: URL
+    private let student: Student?
     private let sessionStateManager: SessionStateManager
 
     @State private var beforePlayer: AVPlayer
     @State private var afterPlayer: AVPlayer
     @State private var beforeDuration = 0.0
     @State private var afterDuration = 0.0
-    @State private var comparisonDuration = 0.0
     @State private var beforeFPS = 30.0
     @State private var afterFPS = 30.0
+    @State private var beforeAspectRatio: CGFloat = 9.0 / 16.0
+    @State private var afterAspectRatio: CGFloat = 9.0 / 16.0
     @State private var beforeFrame = 0
     @State private var afterFrame = 0
-    @State private var synchronizedFrame = 0
     @State private var beforeProgress = 0.0
     @State private var afterProgress = 0.0
     @State private var playbackRate: Float = 1.0
     @State private var isPlaying = false
-    @State private var isSyncEnabled = false
     @State private var isBeforeScrubbing = false
     @State private var isAfterScrubbing = false
-    @State private var isSyncScrubbing = false
     @State private var isSeekingBefore = false
     @State private var isSeekingAfter = false
     @State private var chasedBeforeSeconds: Double?
@@ -3357,9 +3670,7 @@ struct SwingComparisonView: View {
     @State private var afterSeekTask: Task<Void, Never>?
     @State private var beforeTimeObserver: Any?
     @State private var afterTimeObserver: Any?
-    @State private var layoutMode: ComparisonLayoutMode = .stacked
     @State private var focusedPane: ComparisonPane = .before
-    @State private var hasSelectedLayout = false
     @State private var isDrawingEnabled = false
     @State private var drawingTool: SwingDrawingTool = .line
     @State private var drawingColor: SwingDrawingColor = .yellow
@@ -3371,12 +3682,21 @@ struct SwingComparisonView: View {
     @State private var afterZoomScale: CGFloat = 1
     @State private var beforeZoomOffset: CGSize = .zero
     @State private var afterZoomOffset: CGSize = .zero
+    @State private var beforeLastZoomScale: CGFloat = 1
+    @State private var afterLastZoomScale: CGFloat = 1
+    @State private var beforeLastZoomOffset: CGSize = .zero
+    @State private var afterLastZoomOffset: CGSize = .zero
+    @State private var coachAnalysisRecorder = CoachAnalysisRecorder()
+    @State private var isRecordingCoachAnalysis = false
+    @State private var coachAnalysisStatus: VideoSaveStatus?
+    @State private var isShowingCoachAnalysisStatus = false
 
     init(
         beforeVideo: LessonVideo,
         afterVideo: LessonVideo,
         beforeURL: URL,
         afterURL: URL,
+        student: Student? = nil,
         sessionStateManager: SessionStateManager,
         restoredState: LastSessionState? = nil
     ) {
@@ -3384,44 +3704,37 @@ struct SwingComparisonView: View {
         self.afterVideo = afterVideo
         self.beforeURL = beforeURL
         self.afterURL = afterURL
+        self.student = student
         self.sessionStateManager = sessionStateManager
         _beforePlayer = State(initialValue: AVPlayer(url: beforeURL))
         _afterPlayer = State(initialValue: AVPlayer(url: afterURL))
         _beforeProgress = State(initialValue: restoredState?.beforeVideoProgress ?? 0)
         _afterProgress = State(initialValue: restoredState?.afterVideoProgress ?? 0)
         _playbackRate = State(initialValue: restoredState?.playbackSpeed ?? 1.0)
-        if let rawMode = restoredState?.comparisonLayoutMode,
-           let restoredLayout = ComparisonLayoutMode(rawValue: rawMode) {
-            _layoutMode = State(initialValue: restoredLayout)
-            _hasSelectedLayout = State(initialValue: true)
-        }
     }
 
     var body: some View {
         GeometryReader { geometry in
+            let isPad = UIDevice.current.userInterfaceIdiom == .pad
             let isLandscape = geometry.size.width > geometry.size.height
-            Group {
+            ZStack(alignment: .topLeading) {
                 if isLandscape {
                     landscapeContent(size: geometry.size)
                 } else {
-                    portraitContent(size: geometry.size)
+                    portraitContent(size: geometry.size, isPad: isPad)
                 }
-            }
-            .onAppear {
-                guard !hasSelectedLayout else { return }
-                layoutMode = isLandscape || geometry.size.width >= 700 ? .sideBySide : .stacked
-                hasSelectedLayout = true
+
+                floatingBackButton
             }
         }
-        .navigationTitle("Swing Comparison")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             await loadPlaybackMetadata()
             let beforeSeconds = min(beforeProgress * beforeDuration, beforeDuration)
             let afterSeconds = min(afterProgress * afterDuration, afterDuration)
             beforeFrame = frame(for: beforeSeconds, pane: .before)
             afterFrame = frame(for: afterSeconds, pane: .after)
-            synchronizedFrame = synchronizedFrame(for: beforeSeconds)
             await seek(beforePlayer, to: beforeSeconds)
             await seek(afterPlayer, to: afterSeconds)
             updateProgress(for: .before, seconds: beforeSeconds)
@@ -3435,9 +3748,9 @@ struct SwingComparisonView: View {
             saveComparisonState()
             pauseBoth()
             removeTimeObservers()
-        }
-        .onChange(of: layoutMode) { _, _ in
-            saveComparisonState()
+            if isRecordingCoachAnalysis {
+                stopCoachAnalysisRecording()
+            }
         }
         .onChange(of: playbackRate) { _, _ in
             saveComparisonState()
@@ -3447,119 +3760,121 @@ struct SwingComparisonView: View {
                 saveComparisonState()
             }
         }
+        .alert(coachAnalysisStatus?.title ?? "Coach Analysis", isPresented: $isShowingCoachAnalysisStatus) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(coachAnalysisStatus?.message ?? "")
+        }
     }
 
-    private func portraitContent(size: CGSize) -> some View {
-        VStack(spacing: 8) {
-            layoutControls
-            focusedPaneControls
-            comparisonContent(size: size, isLandscape: false)
-            drawingControls
-            synchronizationControls
-            sharedPlaybackControls
+    private func portraitContent(size: CGSize, isPad: Bool) -> some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                comparisonContent(size: size, isLandscape: false, isSideBySide: isPad)
+                    .padding(.top, 4)
+            }
+            .scrollIndicators(.hidden)
+
+            portraitControlBar
         }
-        .padding(.top, 4)
-        .safeAreaPadding(.bottom, 4)
+        .safeAreaPadding(.bottom, 10)
     }
 
     private func landscapeContent(size: CGSize) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 8) {
-                layoutControls
-                focusedPaneControls
-            }
-            .padding(.horizontal, 6)
+        VStack(spacing: 6) {
+            comparisonContent(size: size, isLandscape: true, isSideBySide: true)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                comparisonContent(size: size, isLandscape: true)
-            }
-            .frame(maxHeight: .infinity)
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 5) {
-                    HStack(spacing: 8) {
-                        drawingControls
-                        synchronizationToggle
-                        sharedPlaybackControls
-                    }
-
-                    if isSyncEnabled {
-                        synchronizedFrameControls
-                    }
-                }
-            }
-            .frame(maxHeight: isSyncEnabled || isDrawingEnabled ? 118 : 48)
-            .background(.bar, in: RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 6)
+            landscapeControlBar
+                .padding(.horizontal, 12)
         }
-        .padding(.top, 2)
-        .safeAreaPadding(.horizontal, 4)
-        .safeAreaPadding(.bottom, 4)
+        .background(Color(.systemBackground))
+        .safeAreaPadding(.top, 4)
+        .safeAreaPadding(.bottom, 10)
     }
 
-    private var layoutControls: some View {
-        Picker("Layout", selection: $layoutMode) {
-            ForEach(ComparisonLayoutMode.allCases) { mode in
-                Text(mode.label).tag(mode)
-            }
+    private var floatingBackButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .contentShape(Circle())
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal)
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background(.ultraThinMaterial, in: Circle())
+        .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+        .padding(.leading, 12)
+        .padding(.top, 8)
+        .accessibilityLabel("Back")
     }
 
-    @ViewBuilder
-    private var focusedPaneControls: some View {
-        if layoutMode == .focus {
-            Picker("Focused Video", selection: $focusedPane) {
-                ForEach(ComparisonPane.allCases) { pane in
-                    Text(pane.label).tag(pane)
+    private var landscapeControlBar: some View {
+        VStack(spacing: 5) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    drawingControlsContent
+                    coachAnalysisButton
+                    playbackControlsContent
                 }
+                .padding(.horizontal, 1)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
+            .font(.caption)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.bar, in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
-    private func comparisonContent(size: CGSize, isLandscape: Bool) -> some View {
-        let normalPaneHeight = isLandscape
-            ? max(125, size.height - (isSyncEnabled || isDrawingEnabled ? 198 : 128))
-            : max(175, min(size.height * 0.33, 270))
-        let focusedHeight = isLandscape
-            ? max(165, size.height - (isSyncEnabled || isDrawingEnabled ? 180 : 108))
-            : max(280, size.height - 235)
+    private func comparisonContent(size: CGSize, isLandscape: Bool, isSideBySide: Bool) -> some View {
+        let maxVideoHeight = videoSurfaceHeight(
+            for: size,
+            isLandscape: isLandscape,
+            isSideBySide: isSideBySide
+        )
 
-        switch layoutMode {
-        case .sideBySide:
-            HStack(spacing: 8) {
-                beforePane(videoHeight: normalPaneHeight, compact: true)
-                afterPane(videoHeight: normalPaneHeight, compact: true)
+        if isSideBySide {
+            HStack(spacing: isLandscape ? 6 : 8) {
+                beforePane(maxVideoHeight: maxVideoHeight, compact: true)
+                afterPane(maxVideoHeight: maxVideoHeight, compact: true)
             }
-            .padding(.horizontal, 8)
-            .frame(maxHeight: .infinity)
-        case .stacked:
-            ScrollView {
-                VStack(spacing: 10) {
-                    beforePane(videoHeight: normalPaneHeight, compact: isLandscape)
-                    afterPane(videoHeight: normalPaneHeight, compact: isLandscape)
-                }
-                .padding(.horizontal, 8)
+            .padding(.horizontal, isLandscape ? 6 : 6)
+            .padding(.top, isLandscape ? 6 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 6) {
+                beforePane(maxVideoHeight: maxVideoHeight, compact: true)
+                afterPane(maxVideoHeight: maxVideoHeight, compact: true)
             }
-            .frame(maxHeight: .infinity)
-        case .focus:
-            Group {
-                if focusedPane == .before {
-                    beforePane(videoHeight: focusedHeight, compact: isLandscape)
-                } else {
-                    afterPane(videoHeight: focusedHeight, compact: isLandscape)
-                }
-            }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 6)
             .frame(maxHeight: .infinity)
         }
     }
 
-    private func beforePane(videoHeight: CGFloat, compact: Bool) -> some View {
+    private func videoSurfaceHeight(for size: CGSize, isLandscape: Bool, isSideBySide: Bool) -> CGFloat {
+        if isLandscape {
+            let topLabelHeight: CGFloat = 22
+            let sliderHeight: CGFloat = 56
+            let toolbarHeight: CGFloat = 70
+            let safeAreaReserve: CGFloat = 18
+            let spacing: CGFloat = 18
+            return max(120, size.height - topLabelHeight - sliderHeight - toolbarHeight - safeAreaReserve - spacing)
+        }
+
+        let controlsHeight: CGFloat = 112
+        let paneChromeHeight: CGFloat = 70
+        if isSideBySide {
+            return max(220, size.height - controlsHeight - paneChromeHeight - 12)
+        }
+
+        let interPaneSpacing: CGFloat = 6
+        let availableVideoHeight = size.height - controlsHeight - (paneChromeHeight * 2) - interPaneSpacing - 12
+        return max(100, availableVideoHeight / 2)
+    }
+
+    private func beforePane(maxVideoHeight: CGFloat, compact: Bool) -> some View {
         ComparisonVideoPane(
             title: "Before",
             video: beforeVideo,
@@ -3572,13 +3887,16 @@ struct SwingComparisonView: View {
             drawingTool: drawingTool,
             drawingColor: drawingColor,
             isSelectedForDrawing: focusedPane == .before,
-            videoHeight: videoHeight,
+            videoAspectRatio: beforeAspectRatio,
+            maxVideoHeight: maxVideoHeight,
             compact: compact,
             frameLabel: "Before Frame",
             currentFrame: beforeFrame,
             totalFrames: totalFrames(for: .before),
             zoomScale: $beforeZoomScale,
             zoomOffset: $beforeZoomOffset,
+            lastZoomScale: $beforeLastZoomScale,
+            lastZoomOffset: $beforeLastZoomOffset,
             onSelect: { focusedPane = .before },
             onFrameRequested: { requestFrameSeek(for: .before, to: $0) },
             onScrubbingChanged: { editing in
@@ -3588,7 +3906,7 @@ struct SwingComparisonView: View {
         )
     }
 
-    private func afterPane(videoHeight: CGFloat, compact: Bool) -> some View {
+    private func afterPane(maxVideoHeight: CGFloat, compact: Bool) -> some View {
         ComparisonVideoPane(
             title: "After",
             video: afterVideo,
@@ -3601,13 +3919,16 @@ struct SwingComparisonView: View {
             drawingTool: drawingTool,
             drawingColor: drawingColor,
             isSelectedForDrawing: focusedPane == .after,
-            videoHeight: videoHeight,
+            videoAspectRatio: afterAspectRatio,
+            maxVideoHeight: maxVideoHeight,
             compact: compact,
             frameLabel: "After Frame",
             currentFrame: afterFrame,
             totalFrames: totalFrames(for: .after),
             zoomScale: $afterZoomScale,
             zoomOffset: $afterZoomOffset,
+            lastZoomScale: $afterLastZoomScale,
+            lastZoomOffset: $afterLastZoomOffset,
             onSelect: { focusedPane = .after },
             onFrameRequested: { requestFrameSeek(for: .after, to: $0) },
             onScrubbingChanged: { editing in
@@ -3619,115 +3940,131 @@ struct SwingComparisonView: View {
 
     private var drawingControls: some View {
         HStack(spacing: 8) {
-            DrawingTogglePill(
-                isActive: isDrawingEnabled,
-                selectedColor: drawingColor
-            ) {
-                isDrawingEnabled.toggle()
-            }
-
-            if isDrawingEnabled {
-                drawingToolButton("Line", tool: .line, icon: "line.diagonal")
-                drawingToolButton("Circle", tool: .circle, icon: "circle")
-                Button {
-                    undoDrawing()
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .buttonStyle(.bordered)
-                .disabled(activeStrokes.isEmpty)
-                Button(role: .destructive) {
-                    clearDrawings()
-                } label: {
-                    Text("Clear")
-                }
-                .buttonStyle(.bordered)
-                .disabled(activeStrokes.isEmpty)
-            }
+            drawingControlsContent
         }
         .font(.caption)
         .padding(.horizontal, 8)
+    }
+
+    @ViewBuilder
+    private var drawingControlsContent: some View {
+        DrawingTogglePill(
+            isActive: isDrawingEnabled,
+            selectedColor: drawingColor
+        ) {
+            isDrawingEnabled.toggle()
+        }
+
+        if isDrawingEnabled {
+            drawingToolButton("Line", tool: .line, icon: "line.diagonal")
+            drawingToolButton("Circle", tool: .circle, icon: "circle")
+            Button {
+                undoDrawing()
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .buttonStyle(.bordered)
+            .disabled(activeStrokes.isEmpty)
+            Button(role: .destructive) {
+                clearDrawings()
+            } label: {
+                Text("Clear")
+            }
+            .buttonStyle(.bordered)
+            .disabled(activeStrokes.isEmpty)
+        }
+    }
+
+    private var portraitControlBar: some View {
+        VStack(spacing: 6) {
+            drawingControls
+            sharedPlaybackControls
+        }
+        .padding(.top, 6)
+        .background(.bar)
     }
 
     private var sharedPlaybackControls: some View {
-        HStack(spacing: 8) {
-            Button {
-                playBoth()
-            } label: {
-                Label("Play Both", systemImage: "play.fill")
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                coachAnalysisButton
+                playbackControlsContent
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSeekingBefore || isSeekingAfter)
-
-            Button {
-                pauseBoth()
-            } label: {
-                Label("Pause Both", systemImage: "pause.fill")
-            }
-            .buttonStyle(.bordered)
-
-            Picker("Speed", selection: $playbackRate) {
-                Text("0.5x").tag(Float(0.5))
-                Text("1.0x").tag(Float(1.0))
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 106)
-            .onChange(of: playbackRate) { _, rate in
-                guard isPlaying else { return }
-                beforePlayer.rate = rate
-                afterPlayer.rate = rate
-            }
+            .padding(.horizontal, 8)
         }
         .font(.caption)
-        .padding(.horizontal, 8)
-        .padding(.bottom, 6)
+        .padding(.bottom, 10)
     }
 
-    private var synchronizationControls: some View {
-        VStack(spacing: 8) {
-            synchronizationToggle
+    @ViewBuilder
+    private var playbackControlsContent: some View {
+        Button {
+            playBoth()
+        } label: {
+            Label("Play Both", systemImage: "play.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(isSeekingBefore || isSeekingAfter)
 
-            if isSyncEnabled {
-                synchronizedFrameControls
+        Button {
+            pauseBoth()
+        } label: {
+            Label("Pause Both", systemImage: "pause.fill")
+        }
+        .buttonStyle(.bordered)
+
+        speedMenu
+    }
+
+    private var coachAnalysisButton: some View {
+        Button {
+            toggleCoachAnalysisRecording()
+        } label: {
+            Label(
+                coachAnalysisButtonTitle,
+                systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "waveform.path.ecg"
+            )
+        }
+        .buttonStyle(.bordered)
+        .tint(isRecordingCoachAnalysis ? .red : .orange)
+        .disabled(coachAnalysisRecorder.isRecording && !isRecordingCoachAnalysis)
+        .accessibilityLabel(isRecordingCoachAnalysis ? "Stop coach analysis recording" : "Start coach analysis recording")
+    }
+
+    private var coachAnalysisButtonTitle: LocalizedStringKey {
+        if isRecordingCoachAnalysis {
+            return "Stop"
+        }
+        return horizontalSizeClass == .compact ? "Coach" : "Coach Analysis"
+    }
+
+    private var speedMenu: some View {
+        Menu {
+            speedButton(title: "0.5x", rate: 0.5)
+            speedButton(title: "1.0x", rate: 1.0)
+        } label: {
+            Label("\(playbackRate, specifier: "%.1f")x", systemImage: "speedometer")
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private func speedButton(title: LocalizedStringKey, rate: Float) -> some View {
+        Button {
+            playbackRate = rate
+            guard isPlaying else { return }
+            beforePlayer.rate = rate
+            afterPlayer.rate = rate
+        } label: {
+            if playbackRate == rate {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
             }
         }
-        .padding(.horizontal, 12)
-    }
-
-    private var synchronizationToggle: some View {
-        Toggle("Sync Scrubbing", isOn: $isSyncEnabled)
-            .font(.subheadline.weight(.semibold))
-            .tint(.purple)
-            .onChange(of: isSyncEnabled) { _, enabled in
-                if enabled {
-                    requestSynchronizedSeek(toSeconds: time(for: beforeFrame, pane: .before))
-                }
-            }
-    }
-
-    private var synchronizedFrameControls: some View {
-        FrameScrubberControls(
-            label: "Synced Frame",
-            currentFrame: synchronizedFrame,
-            totalFrames: synchronizedTotalFrames,
-            onFrameRequested: requestSynchronizedFrameSeek,
-            onScrubbingChanged: { editing in
-                isSyncScrubbing = editing
-                handleScrubbingChange(editing)
-            }
-        )
     }
 
     private var activeStrokes: [SwingAnalysisStroke] {
         focusedPane == .before ? beforeStrokes : afterStrokes
-    }
-
-    private var synchronizedFPS: Double {
-        max(beforeFPS, afterFPS)
-    }
-
-    private var synchronizedTotalFrames: Int {
-        max(Int(comparisonDuration * synchronizedFPS), 0)
     }
 
     private func drawingToolButton(_ title: LocalizedStringKey, tool: SwingDrawingTool, icon: String) -> some View {
@@ -3758,6 +4095,77 @@ struct SwingComparisonView: View {
         }
     }
 
+    private func toggleCoachAnalysisRecording() {
+        if isRecordingCoachAnalysis {
+            stopCoachAnalysisRecording()
+        } else {
+            startCoachAnalysisRecording()
+        }
+    }
+
+    private func startCoachAnalysisRecording() {
+        guard student != nil else {
+            coachAnalysisStatus = VideoSaveStatus(
+                title: "Recording Unavailable",
+                message: "Open this comparison from a student profile before recording coach analysis."
+            )
+            isShowingCoachAnalysisStatus = true
+            return
+        }
+
+        isDrawingEnabled = true
+        pauseBoth()
+
+        Task {
+            do {
+                try await coachAnalysisRecorder.start()
+                isRecordingCoachAnalysis = true
+            } catch {
+                coachAnalysisStatus = VideoSaveStatus(title: "Recording Failed", message: error.localizedDescription)
+                isShowingCoachAnalysisStatus = true
+            }
+        }
+    }
+
+    private func stopCoachAnalysisRecording() {
+        Task {
+            do {
+                let outputURL = try await coachAnalysisRecorder.stop()
+                isRecordingCoachAnalysis = false
+                let analysis = CoachAnalysisVideo(
+                    title: "Coach Analysis",
+                    recordedAt: .now,
+                    fileURLString: VideoFileStore.persistedFileName(for: outputURL),
+                    notes: coachAnalysisNotes(),
+                    lessonDate: beforeVideo.lessonDate ?? afterVideo.lessonDate ?? beforeVideo.recordedAt
+                )
+                student?.coachAnalysisVideos.append(analysis)
+                coachAnalysisStatus = VideoSaveStatus(
+                    title: "Analysis Saved",
+                    message: "The coach analysis video was saved under this student's profile."
+                )
+                isShowingCoachAnalysisStatus = true
+            } catch {
+                isRecordingCoachAnalysis = false
+                coachAnalysisStatus = VideoSaveStatus(title: "Recording Failed", message: error.localizedDescription)
+                isShowingCoachAnalysisStatus = true
+            }
+        }
+    }
+
+    private func coachAnalysisNotes() -> String {
+        [
+            "Comparison coach analysis",
+            "Before: \(beforeVideo.title)",
+            "After: \(afterVideo.title)",
+            "Before frame: \(beforeFrame)",
+            "After frame: \(afterFrame)",
+            "Before annotations: \(beforeStrokes.count)",
+            "After annotations: \(afterStrokes.count)",
+            "Playback speed: \(String(format: "%.1fx", playbackRate))"
+        ].joined(separator: "\n")
+    }
+
     private func playBoth() {
         guard !isSeekingBefore, !isSeekingAfter else { return }
         beforePlayer.playImmediately(atRate: playbackRate)
@@ -3772,34 +4180,12 @@ struct SwingComparisonView: View {
     }
 
     private func requestFrameSeek(for pane: ComparisonPane, to frame: Int) {
-        if isSyncEnabled {
-            requestSynchronizedSeek(toSeconds: time(for: frame, pane: pane))
-            return
-        }
-
         pauseBoth()
         let selectedFrame = min(max(frame, 0), totalFrames(for: pane))
         let targetSeconds = time(for: selectedFrame, pane: pane)
         setFrame(selectedFrame, for: pane)
         updateProgress(for: pane, seconds: targetSeconds)
         queueSeek(for: pane, to: targetSeconds)
-    }
-
-    private func requestSynchronizedFrameSeek(to frame: Int) {
-        let selectedFrame = min(max(frame, 0), synchronizedTotalFrames)
-        requestSynchronizedSeek(toSeconds: Double(selectedFrame) / synchronizedFPS)
-    }
-
-    private func requestSynchronizedSeek(toSeconds seconds: Double) {
-        pauseBoth()
-        let targetSeconds = min(max(seconds, 0), comparisonDuration)
-        synchronizedFrame = synchronizedFrame(for: targetSeconds)
-        beforeFrame = frame(for: targetSeconds, pane: .before)
-        afterFrame = frame(for: targetSeconds, pane: .after)
-        updateProgress(for: .before, seconds: targetSeconds)
-        updateProgress(for: .after, seconds: targetSeconds)
-        queueSeek(for: .before, to: targetSeconds)
-        queueSeek(for: .after, to: targetSeconds)
     }
 
     private func queueSeek(for pane: ComparisonPane, to seconds: Double) {
@@ -3840,32 +4226,46 @@ struct SwingComparisonView: View {
 
         beforeDuration = beforeMetadata.duration
         afterDuration = afterMetadata.duration
-        comparisonDuration = min(beforeMetadata.duration, afterMetadata.duration)
         beforeFPS = beforeMetadata.fps
         afterFPS = afterMetadata.fps
+        beforeAspectRatio = beforeMetadata.aspectRatio
+        afterAspectRatio = afterMetadata.aspectRatio
     }
 
     @MainActor
-    private func playbackMetadata(for url: URL) async -> (duration: Double, fps: Double) {
+    private func playbackMetadata(for url: URL) async -> (duration: Double, fps: Double, aspectRatio: CGFloat) {
         let asset = AVURLAsset(url: url)
         let loadedDuration = (try? await asset.load(.duration).seconds) ?? 0
         let duration = loadedDuration.isFinite ? max(loadedDuration, 0) : 0
         let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
         guard let track = tracks.first else {
-            return (duration, 30)
+            return (duration, 30, 9.0 / 16.0)
         }
 
+        let aspectRatio = await videoAspectRatio(for: track)
         let nominalFrameRate = Double((try? await track.load(.nominalFrameRate)) ?? 0)
         if nominalFrameRate.isFinite, nominalFrameRate > 0 {
-            return (duration, nominalFrameRate)
+            return (duration, nominalFrameRate, aspectRatio)
         }
 
         let loadedFrameDuration = (try? await track.load(.minFrameDuration).seconds) ?? 0
         if loadedFrameDuration.isFinite, loadedFrameDuration > 0 {
-            return (duration, 1.0 / loadedFrameDuration)
+            return (duration, 1.0 / loadedFrameDuration, aspectRatio)
         }
 
-        return (duration, 30)
+        return (duration, 30, aspectRatio)
+    }
+
+    @MainActor
+    private func videoAspectRatio(for track: AVAssetTrack) async -> CGFloat {
+        let naturalSize = (try? await track.load(.naturalSize)) ?? .zero
+        let preferredTransform = (try? await track.load(.preferredTransform)) ?? .identity
+        let transformedSize = naturalSize.applying(preferredTransform)
+        let displaySize = CGSize(width: abs(transformedSize.width), height: abs(transformedSize.height))
+        guard displaySize.width > 0, displaySize.height > 0 else {
+            return 9.0 / 16.0
+        }
+        return displaySize.width / displaySize.height
     }
 
     @MainActor
@@ -3880,10 +4280,6 @@ struct SwingComparisonView: View {
 
     private func frame(for seconds: Double, pane: ComparisonPane) -> Int {
         min(max(Int(seconds * fps(for: pane)), 0), totalFrames(for: pane))
-    }
-
-    private func synchronizedFrame(for seconds: Double) -> Int {
-        min(max(Int(seconds * synchronizedFPS), 0), synchronizedTotalFrames)
     }
 
     private func time(for frame: Int, pane: ComparisonPane) -> Double {
@@ -3925,17 +4321,14 @@ struct SwingComparisonView: View {
     }
 
     private func addTimeObservers() {
-        let interval = CMTime(seconds: 1.0 / synchronizedFPS, preferredTimescale: 600)
+        let interval = CMTime(seconds: 1.0 / max(beforeFPS, afterFPS, 1.0), preferredTimescale: 600)
         beforeTimeObserver = beforePlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
-            guard !isBeforeScrubbing, !isSyncScrubbing, !isSeekingBefore, beforeDuration > 0 else { return }
+            guard !isBeforeScrubbing, !isSeekingBefore, beforeDuration > 0 else { return }
             beforeFrame = frame(for: time.seconds, pane: .before)
             beforeProgress = min(max(time.seconds / beforeDuration, 0), 1)
-            if isSyncEnabled {
-                synchronizedFrame = synchronizedFrame(for: time.seconds)
-            }
         }
         afterTimeObserver = afterPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
-            guard !isAfterScrubbing, !isSyncScrubbing, !isSeekingAfter, afterDuration > 0 else { return }
+            guard !isAfterScrubbing, !isSeekingAfter, afterDuration > 0 else { return }
             afterFrame = frame(for: time.seconds, pane: .after)
             afterProgress = min(max(time.seconds / afterDuration, 0), 1)
         }
@@ -3956,11 +4349,46 @@ struct SwingComparisonView: View {
         sessionStateManager.updateComparison(
             beforeVideo: beforeVideo,
             afterVideo: afterVideo,
-            layoutMode: layoutMode,
             playbackSpeed: playbackRate,
             beforeProgress: beforeProgress,
             afterProgress: afterProgress
         )
+    }
+}
+
+private struct AspectFitVideoView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerLayerView {
+        let view = PlayerLayerView()
+        view.player = player
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerLayerView, context: Context) {
+        if uiView.player !== player {
+            uiView.player = player
+        }
+    }
+
+    class PlayerLayerView: UIView {
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+        private var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+        var player: AVPlayer? {
+            get { playerLayer.player }
+            set {
+                playerLayer.player = newValue
+                playerLayer.videoGravity = .resizeAspect
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            playerLayer.frame = bounds
+            playerLayer.videoGravity = .resizeAspect
+        }
     }
 }
 
@@ -3976,25 +4404,27 @@ private struct ComparisonVideoPane: View {
     let drawingTool: SwingDrawingTool
     let drawingColor: SwingDrawingColor
     let isSelectedForDrawing: Bool
-    let videoHeight: CGFloat
+    let videoAspectRatio: CGFloat
+    let maxVideoHeight: CGFloat
     let compact: Bool
     let frameLabel: String
     let currentFrame: Int
     let totalFrames: Int
     @Binding var zoomScale: CGFloat
     @Binding var zoomOffset: CGSize
+    @Binding var lastZoomScale: CGFloat
+    @Binding var lastZoomOffset: CGSize
     let onSelect: () -> Void
     let onFrameRequested: (Int) -> Void
     let onScrubbingChanged: (Bool) -> Void
-    @State private var gestureStartScale: CGFloat = 1
-    @State private var gestureStartOffset: CGSize = .zero
+    @State private var hasConfiguredInitialZoom = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             Button(action: onSelect) {
                 HStack {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                     if isDrawingEnabled && isSelectedForDrawing {
                         Label("Drawing", systemImage: "pencil")
                             .font(.caption2)
@@ -4030,7 +4460,7 @@ private struct ComparisonVideoPane: View {
                     .lineLimit(1)
             }
         }
-        .padding(6)
+        .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(.secondarySystemBackground))
@@ -4045,7 +4475,7 @@ private struct ComparisonVideoPane: View {
         GeometryReader { proxy in
             ZStack {
                 ZStack {
-                    VideoPlayer(player: player)
+                    AspectFitVideoView(player: player)
                         .allowsHitTesting(false)
                     SwingDrawingOverlay(
                         strokes: $strokes,
@@ -4058,7 +4488,7 @@ private struct ComparisonVideoPane: View {
                         onZoomChanged: { relativeScale in
                             updateZoom(relativeScale: relativeScale, in: proxy.size)
                         },
-                        onZoomEnded: { clampZoom(in: proxy.size) },
+                        onZoomEnded: { commitTransform(in: proxy.size) },
                         onZoomPanBegan: { beginPan() },
                         onZoomPanChanged: { translation in
                             updatePan(translation: translation, in: proxy.size)
@@ -4068,13 +4498,18 @@ private struct ComparisonVideoPane: View {
                 .scaleEffect(zoomScale)
                 .offset(zoomOffset)
             }
+            .onAppear {
+                configureInitialZoomIfNeeded(in: proxy.size)
+            }
+            .onChange(of: proxy.size) { _, newSize in
+                clampToValidZoomRange(in: newSize)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.black)
             .contentShape(Rectangle())
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .gesture(zoomGesture(in: proxy.size), isEnabled: !isDrawingEnabled)
-            .simultaneousGesture(panGesture(in: proxy.size), isEnabled: !isDrawingEnabled)
+            .gesture(videoTransformGesture(in: proxy.size), isEnabled: !isDrawingEnabled)
             .onTapGesture(count: 2) {
                 guard !isDrawingEnabled else { return }
                 resetZoom()
@@ -4082,82 +4517,128 @@ private struct ComparisonVideoPane: View {
             .onTapGesture(perform: onSelect)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: videoHeight)
+        .frame(height: maxVideoHeight)
     }
 
-    private func zoomGesture(in size: CGSize) -> some Gesture {
-        MagnifyGesture()
-            .onChanged { value in
-                updateZoom(relativeScale: value.magnification, in: size)
-            }
-            .onEnded { _ in
-                clampZoom(in: size)
-            }
-    }
-
-    private func panGesture(in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
-            .onChanged { value in
-                updatePan(translation: value.translation, in: size)
-            }
-            .onEnded { _ in
-                clampZoom(in: size)
-                beginPan()
-            }
+    private func videoTransformGesture(in size: CGSize) -> some Gesture {
+        SimultaneousGesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    updateZoom(relativeScale: value, in: size)
+                }
+                .onEnded { _ in
+                    commitTransform(in: size)
+                },
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    updatePan(translation: value.translation, in: size)
+                }
+                .onEnded { _ in
+                    commitTransform(in: size)
+                }
+        )
     }
 
     private func beginZoom() {
-        gestureStartScale = zoomScale
+        lastZoomScale = zoomScale
     }
 
     private func updateZoom(relativeScale: CGFloat, in size: CGSize) {
-        if gestureStartScale == 0 {
-            gestureStartScale = zoomScale
+        let range = zoomRange(in: size)
+        let nextScale = min(max(lastZoomScale * relativeScale, range.minimum), range.maximum)
+        zoomScale = nextScale
+        zoomOffset = clampedOffset(zoomOffset, scale: nextScale, in: size)
+        if nextScale == range.minimum {
+            zoomOffset = .zero
+            lastZoomOffset = .zero
         }
-        zoomScale = min(max(gestureStartScale * relativeScale, 1), 5)
-        zoomOffset = clampedOffset(zoomOffset, scale: zoomScale, in: size)
     }
 
     private func beginPan() {
-        gestureStartOffset = zoomOffset
+        lastZoomOffset = zoomOffset
     }
 
     private func updatePan(translation: CGSize, in size: CGSize) {
-        guard zoomScale > 1 else {
+        let range = zoomRange(in: size)
+        guard zoomScale > range.minimum else {
             zoomOffset = .zero
-            gestureStartOffset = .zero
+            lastZoomOffset = .zero
             return
         }
 
         let proposed = CGSize(
-            width: gestureStartOffset.width + translation.width,
-            height: gestureStartOffset.height + translation.height
+            width: lastZoomOffset.width + translation.width,
+            height: lastZoomOffset.height + translation.height
         )
         zoomOffset = clampedOffset(proposed, scale: zoomScale, in: size)
     }
 
-    private func clampZoom(in size: CGSize) {
-        zoomScale = min(max(zoomScale, 1), 5)
-        zoomOffset = zoomScale <= 1 ? .zero : clampedOffset(zoomOffset, scale: zoomScale, in: size)
-        gestureStartScale = zoomScale
-        gestureStartOffset = zoomOffset
+    private func commitTransform(in size: CGSize) {
+        let range = zoomRange(in: size)
+        zoomScale = min(max(zoomScale, range.minimum), range.maximum)
+        zoomOffset = zoomScale <= range.minimum ? .zero : clampedOffset(zoomOffset, scale: zoomScale, in: size)
+        lastZoomScale = zoomScale
+        lastZoomOffset = zoomOffset
     }
 
     private func resetZoom() {
         zoomScale = 1
         zoomOffset = .zero
-        gestureStartScale = 1
-        gestureStartOffset = .zero
+        lastZoomScale = 1
+        lastZoomOffset = .zero
     }
 
     private func clampedOffset(_ offset: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
-        guard scale > 1 else { return .zero }
-        let maxX = max((size.width * (scale - 1)) / 2, 0)
-        let maxY = max((size.height * (scale - 1)) / 2, 0)
+        let range = zoomRange(in: size)
+        guard scale > range.minimum else { return .zero }
+        let extraScale = scale - range.minimum
+        let maxX = max((size.width * extraScale) / 2, 0)
+        let maxY = max((size.height * extraScale) / 2, 0)
         return CGSize(
             width: min(max(offset.width, -maxX), maxX),
             height: min(max(offset.height, -maxY), maxY)
         )
+    }
+
+    private func configureInitialZoomIfNeeded(in size: CGSize) {
+        guard !hasConfiguredInitialZoom else { return }
+        hasConfiguredInitialZoom = true
+        let fillScale = zoomRange(in: size).fill
+        zoomScale = fillScale
+        lastZoomScale = fillScale
+        zoomOffset = .zero
+        lastZoomOffset = .zero
+    }
+
+    private func clampToValidZoomRange(in size: CGSize) {
+        guard hasConfiguredInitialZoom else { return }
+        commitTransform(in: size)
+    }
+
+    private func zoomRange(in size: CGSize) -> (minimum: CGFloat, fill: CGFloat, maximum: CGFloat) {
+        let fillScale = fillScaleMultiplier(in: size)
+        return (minimum: 1, fill: fillScale, maximum: max(fillScale * 4, 5))
+    }
+
+    private func fillScaleMultiplier(in size: CGSize) -> CGFloat {
+        let aspectRatio = sanitizedVideoAspectRatio
+        guard size.width > 0, size.height > 0 else { return 1 }
+
+        let boxAspectRatio = size.width / size.height
+        if aspectRatio > boxAspectRatio {
+            let fitHeight = size.width / aspectRatio
+            return max(size.height / max(fitHeight, 1), 1)
+        } else {
+            let fitWidth = size.height * aspectRatio
+            return max(size.width / max(fitWidth, 1), 1)
+        }
+    }
+
+    private var sanitizedVideoAspectRatio: CGFloat {
+        guard videoAspectRatio.isFinite, videoAspectRatio > 0 else {
+            return 9.0 / 16.0
+        }
+        return videoAspectRatio
     }
 
     private func formattedTime(_ seconds: Double) -> String {
@@ -4691,7 +5172,7 @@ struct LessonDayDetailView: View {
         .sheet(item: $lessonForCalendar) { lesson in
             CalendarEventEditor(student: student, lesson: lesson)
         }
-        .sheet(isPresented: $isComparingVideos) {
+        .fullScreenCover(isPresented: $isComparingVideos) {
             SwingComparisonSelectionView(
                 student: student,
                 lessonDate: date,
@@ -5328,6 +5809,11 @@ struct SessionAnalysisRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
+                if analysis.fileURL == nil {
+                    Text("Analysis not generated yet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
@@ -5340,17 +5826,20 @@ struct SessionAnalysisRow: View {
                 }
                 .buttonStyle(.borderless)
 
-                if analysis.fileURL != nil {
-                    Button(action: onPlay) {
-                        Image(systemName: "play.circle")
-                            .font(.title3)
-                            .foregroundStyle(.blue)
-                    }
-                    .buttonStyle(.borderless)
+                Button(action: onPlay) {
+                    Label(
+                        analysis.fileURL == nil ? "Create" : "Play",
+                        systemImage: analysis.fileURL == nil ? "record.circle" : "play.circle"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(analysis.fileURL == nil ? .orange : .blue)
                 }
+                .buttonStyle(.borderless)
             }
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onPlay)
     }
 }
 
@@ -7215,7 +7704,6 @@ struct VideoPlaybackSelection: Identifiable {
 
 struct CoachAnalysisPlaybackSelection: Identifiable {
     let analysis: CoachAnalysisVideo
-    let url: URL
 
     var id: PersistentIdentifier {
         analysis.persistentModelID
@@ -7501,6 +7989,8 @@ struct DrawingGestureCapture: UIViewRepresentable {
             case .changed:
                 let translation = gesture.translation(in: gesture.view)
                 parent.onZoomPanChanged(CGSize(width: translation.x, height: translation.y))
+            case .ended, .cancelled, .failed:
+                parent.onZoomEnded()
             default:
                 break
             }
@@ -8704,6 +9194,7 @@ struct VideoReviewControls: View {
     let playbackRate: Float
     let frameRate: Float
     var showsDetailedControls = true
+    var showsTrimControl = true
     let onScrubBegan: () -> Void
     let onScrubChanged: (Double) -> Void
     let onScrubEnded: (Double) -> Void
@@ -8781,13 +9272,15 @@ struct VideoReviewControls: View {
                         .tint(playbackRate == Float(rate) ? .blue : .secondary)
                     }
 
-                    Spacer()
+                    if showsTrimControl {
+                        Spacer()
 
-                    Button(action: onTrim) {
-                        Label("Trim", systemImage: "scissors")
+                        Button(action: onTrim) {
+                            Label("Trim", systemImage: "scissors")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.bordered)
                     }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
                 }
             }
         }
