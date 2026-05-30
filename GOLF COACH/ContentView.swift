@@ -451,6 +451,7 @@ struct StudentDirectoryView: View {
     @AppStorage("selectedAppLanguage") private var selectedAppLanguage = AppLanguage.english.rawValue
     @AppStorage("prefersDarkMode") private var prefersDarkMode = false
     @Query(sort: \Student.name) private var students: [Student]
+    @Query(sort: \Drill.title) private var drills: [Drill]
     let onPlayVideo: (LessonVideo, Student) -> Void
     let onPlayCoachAnalysis: (CoachAnalysisVideo) -> Void
     let sessionStateManager: SessionStateManager
@@ -826,17 +827,41 @@ struct StudentDirectoryView: View {
     private func restorePendingBackup() {
         guard let backupPendingRestore else { return }
 
+        let drillsBeforeRestore = drills.count
+        let backupDrillRecords = backupPendingRestore.drillRecords
+        let uniqueBackupDrillCount = Set(backupDrillRecords.map(\.dedupeKey)).count
+        var insertedDrills = 0
+        var updatedDrills = 0
+        var skippedDuplicateDrills = max(backupDrillRecords.count - uniqueBackupDrillCount, 0)
+
         navigationPath.removeAll()
+        let initialCleanupCount = cleanupDuplicateDrills()
+        let drillResolver = DrillRestoreResolver(existingDrills: drills, modelContext: modelContext) { event in
+            switch event {
+            case .inserted:
+                insertedDrills += 1
+            case .updated:
+                updatedDrills += 1
+            case .skippedDuplicate:
+                skippedDuplicateDrills += 1
+            }
+        }
+
         for student in students {
             modelContext.delete(student)
         }
         for backupStudent in backupPendingRestore.students {
-            modelContext.insert(backupStudent.makeStudent())
+            modelContext.insert(backupStudent.makeStudent(drillResolver: drillResolver.resolve))
         }
 
         do {
             try modelContext.save()
+            let finalCleanupCount = cleanupDuplicateDrills()
+            try modelContext.save()
             self.backupPendingRestore = nil
+            print(
+                "DEBUG Drill restore: before=\(drillsBeforeRestore) backup=\(backupDrillRecords.count) inserted=\(insertedDrills) updated=\(updatedDrills) skipped=\(skippedDuplicateDrills) cleaned=\(initialCleanupCount + finalCleanupCount)"
+            )
             showBackupStatus(
                 title: "Backup Restored",
                 message: "\(backupPendingRestore.students.count) student record(s) restored. Videos are stored locally on this device and are not included in automatic backups."
@@ -868,6 +893,55 @@ struct StudentDirectoryView: View {
 
     private func updateAutomaticBackupAvailability() {
         hasAutomaticBackup = AutomaticBackupStore.hasBackup
+    }
+
+    @discardableResult
+    private func cleanupDuplicateDrills() -> Int {
+        let groupedDrills = Dictionary(grouping: drills, by: DrillRestoreResolver.key(for:))
+        var cleanedCount = 0
+
+        for duplicates in groupedDrills.values where duplicates.count > 1 {
+            let keptDrill = duplicates.sorted(by: drillCompletenessSort).first!
+            let duplicateDrills = duplicates.filter { $0.persistentModelID != keptDrill.persistentModelID }
+
+            for student in students {
+                for note in student.sessionNotes {
+                    var assignedDrills = note.assignedDrills
+                    var changed = false
+
+                    for duplicate in duplicateDrills where assignedDrills.contains(where: { $0.persistentModelID == duplicate.persistentModelID }) {
+                        assignedDrills.removeAll { $0.persistentModelID == duplicate.persistentModelID }
+                        if !assignedDrills.contains(where: { $0.persistentModelID == keptDrill.persistentModelID }) {
+                            assignedDrills.append(keptDrill)
+                        }
+                        changed = true
+                    }
+
+                    if changed {
+                        note.assignedDrills = assignedDrills
+                    }
+                }
+            }
+
+            for duplicate in duplicateDrills {
+                modelContext.delete(duplicate)
+                cleanedCount += 1
+            }
+        }
+
+        if cleanedCount > 0 {
+            print("DEBUG Drill cleanup removed duplicates=\(cleanedCount)")
+        }
+        return cleanedCount
+    }
+
+    private func drillCompletenessSort(_ lhs: Drill, _ rhs: Drill) -> Bool {
+        let lhsScore = DrillRestoreResolver.completenessScore(lhs)
+        let rhsScore = DrillRestoreResolver.completenessScore(rhs)
+        if lhsScore != rhsScore {
+            return lhsScore > rhsScore
+        }
+        return lhs.createdAt < rhs.createdAt
     }
 }
 
@@ -1072,6 +1146,42 @@ struct StudentSelectionPrompt: View {
     }
 }
 
+private enum LessonCountCalculator {
+    static func lessonsTaken(for student: Student) -> Int {
+        var lessonDays = Set<Date>()
+        let calendar = Calendar.current
+
+        for lesson in student.lessons where lesson.isCompleted {
+            lessonDays.insert(calendar.startOfDay(for: lesson.scheduledAt))
+        }
+
+        for note in student.sessionNotes where isSubstantive(note) {
+            lessonDays.insert(calendar.startOfDay(for: note.sessionDate))
+        }
+
+        return lessonDays.count
+    }
+
+    private static func isSubstantive(_ note: LessonSessionNote) -> Bool {
+        let textFields = [
+            note.focus,
+            note.problems,
+            note.improvements,
+            note.generalNotes,
+            note.lessonFocus,
+            note.coachNotes,
+            note.homework,
+            note.drills,
+            note.nextLessonGoal,
+            note.privateCoachJournal
+        ]
+
+        return textFields.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ||
+            !note.imageAttachments.isEmpty ||
+            !note.assignedDrills.isEmpty
+    }
+}
+
 struct StudentRow: View {
     let student: Student
     var isHighlighted = false
@@ -1095,6 +1205,10 @@ struct StudentRow: View {
 
     private var remainingTint: Color {
         student.remainingValue > 0 ? StudentDirectoryPalette.fairway : StudentDirectoryPalette.secondary
+    }
+
+    private var lessonsTaken: Int {
+        LessonCountCalculator.lessonsTaken(for: student)
     }
 
     var body: some View {
@@ -1129,6 +1243,11 @@ struct StudentRow: View {
                     .padding(.vertical, 5)
                     .background(remainingTint.opacity(0.10), in: Capsule())
                 }
+
+                Text("Lessons taken: \(lessonsTaken)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(StudentDirectoryPalette.secondary)
+                    .monospacedDigit()
 
                 HStack(spacing: 14) {
                     StudentRowInfo(systemImage: "creditcard", text: CurrencyFormatter.string(from: student.totalPaid))
@@ -1484,6 +1603,10 @@ struct StudentDetailView: View {
     @State private var videoCaptureError: String?
     @State private var isShowingVideoCaptureError = false
     @State private var processedCaptureURLs: Set<URL> = []
+    @State private var selectedProfileVideoImportItem: PhotosPickerItem?
+    @State private var pendingProfileImportedVideoURL: URL?
+    @State private var isChoosingProfileVideoLessonDate = false
+    @State private var isImportingProfileVideo = false
     @State private var sessionNoteToShare: LessonSessionNote?
     @State private var isAddingSessionNote = false
     @State private var sessionNoteDefaultDate: Date = .now
@@ -1590,6 +1713,26 @@ struct StudentDetailView: View {
         .sheet(isPresented: $isAddingVideo) {
             AddVideoView(student: student, defaultDate: newVideoDefaultDate)
         }
+        .sheet(isPresented: $isChoosingProfileVideoLessonDate, onDismiss: {
+            discardPendingProfileImportedVideoIfNeeded()
+        }) {
+            if let pendingProfileImportedVideoURL {
+                ImportedVideoLessonDateView(
+                    student: student,
+                    storedVideoURL: pendingProfileImportedVideoURL,
+                    onCancel: {
+                        discardPendingProfileImportedVideoIfNeeded()
+                        isChoosingProfileVideoLessonDate = false
+                    },
+                    onSave: { message in
+                        self.pendingProfileImportedVideoURL = nil
+                        isChoosingProfileVideoLessonDate = false
+                        lessonStatusMessage = message
+                        isShowingLessonStatus = true
+                    }
+                )
+            }
+        }
         .fullScreenCover(isPresented: $isCapturingSwingVideo) {
             VideoCaptureView { url in
                 saveCapturedSwingVideo(from: url)
@@ -1615,6 +1758,9 @@ struct StudentDetailView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(videoCaptureError ?? "The video could not be saved.")
+        }
+        .onChange(of: selectedProfileVideoImportItem) { _, newItem in
+            importProfileVideo(from: newItem)
         }
     }
 
@@ -1876,10 +2022,21 @@ struct StudentDetailView: View {
     @ToolbarContentBuilder
     private var captureVideoToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                startVideoCapture()
-            } label: {
-                Label("Capture Video", systemImage: "camera.fill")
+            HStack(spacing: 12) {
+                PhotosPicker(
+                    selection: $selectedProfileVideoImportItem,
+                    matching: .videos,
+                    preferredItemEncoding: .current
+                ) {
+                    Label("Import Video", systemImage: "video.badge.plus")
+                }
+                .disabled(isImportingProfileVideo)
+
+                Button {
+                    startVideoCapture()
+                } label: {
+                    Label("Capture Video", systemImage: "camera.fill")
+                }
             }
         }
     }
@@ -1917,6 +2074,9 @@ struct StudentDetailView: View {
                 }
                 Button("Cancel", role: .cancel) { }
             }
+            Label("Total lessons taken: \(LessonCountCalculator.lessonsTaken(for: student))", systemImage: "checkmark.circle")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
             TextField("Name", text: $name)
             HStack {
                 TextField("Phone", text: $phoneNumber)
@@ -2059,10 +2219,7 @@ struct StudentDetailView: View {
             onRequestDeduct: { package in
                 packageToDeduct = package
             },
-            onRequestReversePackage: { package in
-                packagePendingReversal = package
-                isConfirmingPackageReversal = true
-            },
+            onRequestDeletePackage: requestPackageDeletion,
             onRequestReverseCharge: { package, charge in
                 chargePackagePendingReversal = package
                 chargePendingReversal = charge
@@ -2137,6 +2294,33 @@ struct StudentDetailView: View {
     private func stagePackagesForDeletion(_ packages: [LessonPackage]) {
         packagesPendingDeletion = packages
         isConfirmingPackageDeletion = !packagesPendingDeletion.isEmpty
+    }
+
+    private func requestPackageDeletion(_ package: LessonPackage) {
+        guard student.packages.contains(where: { $0.persistentModelID == package.persistentModelID }) else { return }
+
+        if packageRequiresDeletionConfirmation(package) {
+            packagePendingReversal = package
+            isConfirmingPackageReversal = true
+        } else {
+            deleteUnusedPackage(package)
+        }
+    }
+
+    private func packageRequiresDeletionConfirmation(_ package: LessonPackage) -> Bool {
+        package.lessonsUsed > 0
+            || !package.charges.isEmpty
+            || package.totalPaid > 0
+            || package.amountDeducted > 0
+    }
+
+    private func deleteUnusedPackage(_ package: LessonPackage) {
+        guard student.packages.contains(where: { $0.persistentModelID == package.persistentModelID }) else { return }
+
+        student.packages.removeAll { $0.persistentModelID == package.persistentModelID }
+        lastUndoAction = .packageDeletion([package])
+        undoStatusMessage = "Package deleted. \(student.name) now has \(CurrencyFormatter.string(from: student.remainingValue)) remaining."
+        isShowingUndoStatus = true
     }
 
     private func preparePackageDeletionMessage() {
@@ -2305,6 +2489,44 @@ struct StudentDetailView: View {
         isCapturingSwingVideo = true
     }
 
+    private func importProfileVideo(from item: PhotosPickerItem?) {
+        guard let item else { return }
+
+        Task {
+            isImportingProfileVideo = true
+            defer {
+                isImportingProfileVideo = false
+                selectedProfileVideoImportItem = nil
+            }
+
+            do {
+                guard let importedVideo = try await item.loadTransferable(type: LessonVideoImport.self) else {
+                    throw CocoaError(.fileReadUnknown)
+                }
+                replacePendingProfileImportedVideo(with: importedVideo.storedURL)
+                await VideoFileStore.logVideoImport(url: importedVideo.storedURL, source: "student profile PhotosPicker movie")
+                isChoosingProfileVideoLessonDate = true
+            } catch {
+                print("DEBUG LessonVideo profile import failed: type=movie fileURL=unavailable error=\(error.localizedDescription)")
+                videoCaptureError = VideoFileStore.importFailureMessage(error)
+                isShowingVideoCaptureError = true
+            }
+        }
+    }
+
+    private func replacePendingProfileImportedVideo(with url: URL) {
+        if let pendingProfileImportedVideoURL, pendingProfileImportedVideoURL != url {
+            VideoFileStore.deleteStoredVideoFile(fileName: VideoFileStore.persistedFileName(for: pendingProfileImportedVideoURL))
+        }
+        pendingProfileImportedVideoURL = url
+    }
+
+    private func discardPendingProfileImportedVideoIfNeeded() {
+        guard let pendingProfileImportedVideoURL else { return }
+        VideoFileStore.deleteStoredVideoFile(fileName: VideoFileStore.persistedFileName(for: pendingProfileImportedVideoURL))
+        self.pendingProfileImportedVideoURL = nil
+    }
+
     private func saveCapturedSwingVideo(from url: URL) {
         let sourceURL = url.standardizedFileURL
         guard processedCaptureURLs.insert(sourceURL).inserted else {
@@ -2341,7 +2563,7 @@ struct StudentDetailView: View {
 struct PackageListSection: View {
     @Bindable var student: Student
     let onRequestDeduct: (LessonPackage) -> Void
-    let onRequestReversePackage: (LessonPackage) -> Void
+    let onRequestDeletePackage: (LessonPackage) -> Void
     let onRequestReverseCharge: (LessonPackage, LessonCharge) -> Void
 
     var sortedPackages: [LessonPackage] {
@@ -2414,20 +2636,15 @@ struct PackageListSection: View {
                         .buttonStyle(.borderless)
                         .disabled(package.remainingValue <= 0)
 
-                        HStack {
-                            Spacer()
-                            Button(role: .destructive) {
-                                onRequestReversePackage(package)
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("Delete Payment Package")
-                        }
                     }
                     .padding(.vertical, 6)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            onRequestDeletePackage(package)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }
@@ -4947,6 +5164,7 @@ private enum LessonTimelineBuilder {
 }
 
 struct LessonTimelineSection: View {
+    @Environment(\.modelContext) private var modelContext
     @Bindable var student: Student
     let sessionStateManager: SessionStateManager
     let onCaptureVideo: (Date) -> Void
@@ -4958,6 +5176,7 @@ struct LessonTimelineSection: View {
     let onEditNote: (LessonSessionNote) -> Void
     let onEditVideo: (LessonVideo) -> Void
     let onEditAnalysis: (CoachAnalysisVideo) -> Void
+    @State private var lessonPendingDeletion: LessonAppointment?
 
     private var days: [LessonTimelineDay] {
         LessonTimelineBuilder.days(for: student)
@@ -4965,81 +5184,125 @@ struct LessonTimelineSection: View {
 
     var body: some View {
         Section("Lesson Timeline") {
-            timelineActionButtons
-
             if days.isEmpty {
-                Text("No lesson sessions yet")
+                Text("No lessons yet")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(days) { day in
-                    NavigationLink {
-                        LessonDayDetailView(
-                            student: student,
-                            date: day.date,
-                            sessionStateManager: sessionStateManager,
-                            restoreComparisonOnAppear: false,
-                            onCaptureVideo: onCaptureVideo,
-                            onAddVideo: onAddVideo,
-                            onPlayVideo: onPlayVideo,
-                            onPlayCoachAnalysis: onPlayCoachAnalysis,
-                            onShareNote: onShareNote,
-                            onAddSessionNote: onAddSessionNote,
-                            onEditNote: onEditNote,
-                            onEditVideo: onEditVideo,
-                            onEditAnalysis: onEditAnalysis
-                        )
-                    } label: {
-                        LessonTimelineCard(day: day)
+                ForEach(days, id: \.id) { day in
+                    if day.appointments.isEmpty {
+                        timelineNavigationLink(for: day) {
+                            LessonTimelineCard(day: day)
+                        }
+                    } else {
+                        ForEach(day.appointments.sorted { $0.scheduledAt < $1.scheduledAt }, id: \.persistentModelID) { lesson in
+                            timelineNavigationLink(for: day) {
+                                LessonTimelineLessonRow(lesson: lesson, day: day)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    lessonPendingDeletion = lesson
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .listRowBackground(Color.clear)
                 }
             }
         }
         .listRowBackground(StudentDetailSectionTint.lessons)
-    }
-
-    @ViewBuilder
-    private var timelineActionButtons: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                timelineButton(
-                    title: "Add Lesson Notes",
-                    systemImage: "note.text.badge.plus",
-                    action: { onAddSessionNote(.now) }
-                )
-                timelineButton(
-                    title: "Add Video",
-                    systemImage: "video.badge.plus",
-                    action: { onAddVideo(.now) }
-                )
+        .alert("Delete Lesson?", isPresented: Binding(
+            get: { lessonPendingDeletion != nil },
+            set: { if !$0 { lessonPendingDeletion = nil } }
+        ), presenting: lessonPendingDeletion) { lesson in
+            Button("Delete", role: .destructive) {
+                deleteScheduledLesson(lesson)
+                lessonPendingDeletion = nil
             }
-
-            VStack(spacing: 8) {
-                timelineButton(
-                    title: "Add Lesson Notes",
-                    systemImage: "note.text.badge.plus",
-                    action: { onAddSessionNote(.now) }
-                )
-                timelineButton(
-                    title: "Add Video",
-                    systemImage: "video.badge.plus",
-                    action: { onAddVideo(.now) }
-                )
+            Button("Cancel", role: .cancel) {
+                lessonPendingDeletion = nil
             }
+        } message: { _ in
+            Text("This will remove this lesson from the student's lesson timeline. This action cannot be undone.")
         }
     }
 
-    private func timelineButton(title: LocalizedStringKey, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
+    private func timelineNavigationLink<LabelContent: View>(
+        for day: LessonTimelineDay,
+        @ViewBuilder label: () -> LabelContent
+    ) -> some View {
+        NavigationLink {
+            LessonDayDetailView(
+                student: student,
+                date: day.date,
+                sessionStateManager: sessionStateManager,
+                restoreComparisonOnAppear: false,
+                onCaptureVideo: onCaptureVideo,
+                onAddVideo: onAddVideo,
+                onPlayVideo: onPlayVideo,
+                onPlayCoachAnalysis: onPlayCoachAnalysis,
+                onShareNote: onShareNote,
+                onAddSessionNote: onAddSessionNote,
+                onEditNote: onEditNote,
+                onEditVideo: onEditVideo,
+                onEditAnalysis: onEditAnalysis
+            )
+        } label: {
+            label()
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+    }
+
+    private func deleteScheduledLesson(_ lesson: LessonAppointment) {
+        if let notificationIdentifier = lesson.notificationIdentifier {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
+        }
+        student.lessons.removeAll { $0.persistentModelID == lesson.persistentModelID }
+        modelContext.delete(lesson)
+    }
+}
+
+struct LessonTimelineLessonRow: View {
+    let lesson: LessonAppointment
+    let day: LessonTimelineDay
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(lesson.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(lesson.scheduledAt, format: .dateTime.weekday(.wide).month(.wide).day().year().hour().minute())
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+
+            if !lesson.location.isEmpty {
+                Label(lesson.location, systemImage: "mappin.and.ellipse")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                LessonTimelineMetricChip(label: "Notes", value: day.notes.count, systemImage: "note.text")
+                LessonTimelineMetricChip(label: "Videos", value: day.swingVideos.count, systemImage: "video")
+                LessonTimelineMetricChip(label: "Analysis", value: day.analysisVideos.count, systemImage: "figure.golf")
+                LessonTimelineMetricChip(label: "Practice", value: day.assignmentCount, systemImage: "checklist")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -5274,6 +5537,9 @@ struct LessonDayDetailView: View {
                     let lessons = day.appointments.sorted { $0.scheduledAt < $1.scheduledAt }
                     for index in offsets {
                         let lesson = lessons[index]
+                        if let notificationIdentifier = lesson.notificationIdentifier {
+                            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
+                        }
                         student.lessons.removeAll { $0.persistentModelID == lesson.persistentModelID }
                         modelContext.delete(lesson)
                     }
@@ -7120,6 +7386,159 @@ struct AddLessonView: View {
             }
         }
     }
+}
+
+struct ImportedVideoLessonDateView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var student: Student
+    let storedVideoURL: URL
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+    @State private var lessonDate = Date.now
+    @State private var saveError: String?
+
+    private var existingLessonDates: [Date] {
+        let calendar = Calendar.current
+        var seenDays = Set<Date>()
+        return student.lessons
+            .sorted { $0.scheduledAt > $1.scheduledAt }
+            .compactMap { lesson in
+                let day = calendar.startOfDay(for: lesson.scheduledAt)
+                guard seenDays.insert(day).inserted else { return nil }
+                return lesson.scheduledAt
+            }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Existing Lesson Dates") {
+                    if existingLessonDates.isEmpty {
+                        Text("No existing lesson dates")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(existingLessonDates, id: \.self) { date in
+                            Button {
+                                lessonDate = date
+                            } label: {
+                                HStack {
+                                    Text(date, format: .dateTime.weekday(.wide).month(.wide).day().year())
+                                    Spacer()
+                                    if Calendar.current.isDate(date, inSameDayAs: lessonDate) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    DatePicker("Date", selection: $lessonDate, displayedComponents: .date)
+                } header: {
+                    Text("Lesson Date")
+                } footer: {
+                    Text("If this date does not already have a lesson, a lesson record will be created for the imported video.")
+                }
+
+                Section("Video") {
+                    Label(defaultVideoTitle(for: lessonDate), systemImage: "video")
+                        .lineLimit(1)
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Choose Lesson Date")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: saveImportedVideo)
+                }
+            }
+        }
+    }
+
+    private func saveImportedVideo() {
+        let fileName = VideoFileStore.persistedFileName(for: storedVideoURL)
+        guard !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingFileURL: storedVideoURL),
+              !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingFileName: fileName),
+              !LessonVideoDisplayStore.containsVideo(in: student.videos, matchingContentOf: storedVideoURL) else {
+            VideoFileStore.deleteStoredVideoFile(fileName: fileName)
+            onSave("Video imported successfully.")
+            return
+        }
+
+        let matchedLesson = ensureLessonExists(on: lessonDate)
+        let videoTitle = defaultVideoTitle(for: lessonDate)
+
+        let video = LessonVideo(
+            title: videoTitle,
+            recordedAt: .now,
+            fileURLString: fileName,
+            lessonDate: lessonDate
+        )
+        student.videos.append(video)
+
+        do {
+            try modelContext.save()
+            print("DEBUG LessonVideo profile import saved studentID=\(student.persistentModelID) selectedLessonDate=\(lessonDate) lessonID=\(matchedLesson.persistentModelID) videoID=\(video.persistentModelID) displayName=\(videoTitle) localPath=\(storedVideoURL.path) timelineRefreshTriggered=true")
+            onSave("Video imported successfully.")
+        } catch {
+            print("DEBUG LessonVideo profile import save failed studentID=\(student.persistentModelID) selectedLessonDate=\(lessonDate) lessonID=\(matchedLesson.persistentModelID) displayName=\(videoTitle) localPath=\(storedVideoURL.path) error=\(error.localizedDescription)")
+            saveError = "Video could not be saved. Please try again."
+        }
+    }
+
+    private func ensureLessonExists(on date: Date) -> LessonAppointment {
+        let calendar = Calendar.current
+        if let existingLesson = student.lessons.first(where: { calendar.isDate($0.scheduledAt, inSameDayAs: date) }) {
+            return existingLesson
+        }
+
+        let lesson = LessonAppointment(
+            title: "Golf Lesson",
+            scheduledAt: date,
+            reminderLeadTime: .none,
+            isCompleted: true
+        )
+        student.lessons.append(lesson)
+        return lesson
+    }
+
+    private func defaultVideoTitle(for date: Date) -> String {
+        let baseTitle = Self.videoTitleDateFormatter.string(from: date)
+        let calendar = Calendar.current
+        let sameDayTitles = student.videos
+            .filter { video in
+                guard let videoDate = video.lessonDate ?? Optional(video.recordedAt) else { return false }
+                return calendar.isDate(videoDate, inSameDayAs: date)
+            }
+            .map(\.title)
+
+        guard sameDayTitles.contains(baseTitle) else { return baseTitle }
+
+        var suffix = 2
+        while sameDayTitles.contains("\(baseTitle) (\(suffix))") {
+            suffix += 1
+        }
+        return "\(baseTitle) (\(suffix))"
+    }
+
+    private static let videoTitleDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 struct LessonVideoImport: Transferable {
@@ -10415,6 +10834,12 @@ struct GolfCoachBackupSnapshot: Codable {
         }
         return snapshot
     }
+
+    var drillRecords: [DrillBackupRecord] {
+        students.flatMap { student in
+            student.sessionNotes.flatMap { $0.assignedDrills ?? [] }
+        }
+    }
 }
 
 struct StudentBackupRecord: Codable {
@@ -10504,7 +10929,7 @@ struct StudentBackupRecord: Codable {
         sessionNotes = student.sessionNotes.map(LessonSessionNoteBackupRecord.init)
     }
 
-    func makeStudent() -> Student {
+    func makeStudent(drillResolver: ((DrillBackupRecord) -> Drill)? = nil) -> Student {
         Student(
             name: name,
             phoneNumber: phoneNumber,
@@ -10521,7 +10946,7 @@ struct StudentBackupRecord: Codable {
             packages: packages.map { $0.makePackage() },
             lessons: lessons.map { $0.makeLesson() },
             videos: videos.map { $0.makeVideo() },
-            sessionNotes: sessionNotes.map { $0.makeNote() }
+            sessionNotes: sessionNotes.map { $0.makeNote(drillResolver: drillResolver) }
         )
     }
 
@@ -10716,22 +11141,10 @@ struct LessonSessionNoteBackupRecord: Codable {
                 caption: $0.caption
             )
         }
-        assignedDrills = note.assignedDrills.map {
-            DrillBackupRecord(
-                title: $0.title,
-                category: $0.category,
-                purpose: $0.purpose,
-                instructions: $0.instructions,
-                recommendedReps: $0.recommendedReps,
-                coachTips: $0.coachTips,
-                createdAt: $0.createdAt,
-                demoVideoFileName: $0.demoVideoFileName,
-                imageData: $0.imageData
-            )
-        }
+        assignedDrills = note.assignedDrills.map(DrillBackupRecord.init)
     }
 
-    func makeNote() -> LessonSessionNote {
+    func makeNote(drillResolver: ((DrillBackupRecord) -> Drill)? = nil) -> LessonSessionNote {
         LessonSessionNote(
             sessionDate: sessionDate,
             focus: focus,
@@ -10745,7 +11158,7 @@ struct LessonSessionNoteBackupRecord: Codable {
             nextLessonGoal: nextLessonGoal ?? "",
             privateCoachJournal: privateCoachJournal ?? "",
             imageAttachments: imageAttachments?.map { $0.makeAttachment() } ?? [],
-            assignedDrills: assignedDrills?.map { $0.makeDrill() } ?? []
+            assignedDrills: assignedDrills?.map { drillResolver?($0) ?? $0.makeDrill() } ?? []
         )
     }
 }
@@ -10777,6 +11190,7 @@ struct LessonNoteImageAttachmentBackupRecord: Codable {
 }
 
 struct DrillBackupRecord: Codable {
+    let stableID: String?
     let title: String
     let category: String
     let purpose: String
@@ -10787,8 +11201,22 @@ struct DrillBackupRecord: Codable {
     let demoVideoFileName: String?
     let imageData: Data?
 
+    init(drill: Drill) {
+        stableID = drill.stableID
+        title = drill.title
+        category = drill.category
+        purpose = drill.purpose
+        instructions = drill.instructions
+        recommendedReps = drill.recommendedReps
+        coachTips = drill.coachTips
+        createdAt = drill.createdAt
+        demoVideoFileName = drill.demoVideoFileName
+        imageData = drill.imageData
+    }
+
     func makeDrill() -> Drill {
         Drill(
+            stableID: stableID ?? Self.fallbackStableID(title: title, category: category, createdAt: createdAt),
             title: title,
             category: category,
             purpose: purpose,
@@ -10799,6 +11227,122 @@ struct DrillBackupRecord: Codable {
             demoVideoFileName: demoVideoFileName,
             imageData: imageData
         )
+    }
+
+    var dedupeKey: String {
+        if let stableID, !stableID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "id:\(stableID)"
+        }
+        return Self.fallbackStableID(title: title, category: category, createdAt: createdAt)
+    }
+
+    static func fallbackStableID(title: String, category: String, createdAt: Date) -> String {
+        [
+            "fallback",
+            normalized(title),
+            normalized(category),
+            ISO8601DateFormatter().string(from: createdAt)
+        ].joined(separator: "|")
+    }
+
+    static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    }
+}
+
+enum DrillRestoreEvent {
+    case inserted
+    case updated
+    case skippedDuplicate
+}
+
+@MainActor
+final class DrillRestoreResolver {
+    private var drillsByKey: [String: Drill] = [:]
+    private let modelContext: ModelContext
+    private let onEvent: (DrillRestoreEvent) -> Void
+
+    init(existingDrills: [Drill], modelContext: ModelContext, onEvent: @escaping (DrillRestoreEvent) -> Void) {
+        self.modelContext = modelContext
+        self.onEvent = onEvent
+
+        for drill in existingDrills.sorted(by: Self.preferredDrill) {
+            let key = Self.key(for: drill)
+            if drillsByKey[key] == nil {
+                drillsByKey[key] = drill
+            } else {
+                onEvent(.skippedDuplicate)
+            }
+        }
+    }
+
+    func resolve(_ record: DrillBackupRecord) -> Drill {
+        let key = record.dedupeKey
+        if let existingDrill = drillsByKey[key] {
+            update(existingDrill, from: record)
+            onEvent(.updated)
+            return existingDrill
+        }
+
+        let drill = record.makeDrill()
+        modelContext.insert(drill)
+        drillsByKey[key] = drill
+        onEvent(.inserted)
+        return drill
+    }
+
+    private func update(_ drill: Drill, from record: DrillBackupRecord) {
+        if drill.stableID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            drill.stableID = record.stableID ?? record.dedupeKey
+        }
+        drill.title = bestValue(current: drill.title, incoming: record.title)
+        drill.category = bestValue(current: drill.category, incoming: record.category)
+        drill.purpose = bestValue(current: drill.purpose, incoming: record.purpose)
+        drill.instructions = bestValue(current: drill.instructions, incoming: record.instructions)
+        drill.recommendedReps = bestValue(current: drill.recommendedReps, incoming: record.recommendedReps)
+        drill.coachTips = bestValue(current: drill.coachTips, incoming: record.coachTips)
+        drill.createdAt = min(drill.createdAt, record.createdAt)
+        if drill.demoVideoFileName == nil {
+            drill.demoVideoFileName = record.demoVideoFileName
+        }
+        if drill.imageData == nil {
+            drill.imageData = record.imageData
+        }
+    }
+
+    private func bestValue(current: String, incoming: String) -> String {
+        current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? incoming : current
+    }
+
+    static func key(for drill: Drill) -> String {
+        if !drill.stableID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "id:\(drill.stableID)"
+        }
+        return DrillBackupRecord.fallbackStableID(title: drill.title, category: drill.category, createdAt: drill.createdAt)
+    }
+
+    static func completenessScore(_ drill: Drill) -> Int {
+        [
+            drill.title,
+            drill.category,
+            drill.purpose,
+            drill.instructions,
+            drill.recommendedReps,
+            drill.coachTips
+        ].reduce(0) { score, value in
+            score + (value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
+        } + (drill.demoVideoFileName == nil ? 0 : 1) + (drill.imageData == nil ? 0 : 1)
+    }
+
+    private static func preferredDrill(_ lhs: Drill, _ rhs: Drill) -> Bool {
+        let lhsScore = completenessScore(lhs)
+        let rhsScore = completenessScore(rhs)
+        if lhsScore != rhsScore {
+            return lhsScore > rhsScore
+        }
+        return lhs.createdAt < rhs.createdAt
     }
 }
 

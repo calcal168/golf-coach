@@ -472,17 +472,19 @@ final class LessonNoteImageAttachment {
 
 @Model
 final class Drill {
-    var title: String
-    var category: String
-    var purpose: String
-    var instructions: String
-    var recommendedReps: String
-    var coachTips: String
-    var createdAt: Date
+    var stableID: String = UUID().uuidString
+    var title: String = ""
+    var category: String = ""
+    var purpose: String = ""
+    var instructions: String = ""
+    var recommendedReps: String = ""
+    var coachTips: String = ""
+    var createdAt: Date = Date()
     var demoVideoFileName: String?
     var imageData: Data?
 
     init(
+        stableID: String = UUID().uuidString,
         title: String = "",
         category: String = "",
         purpose: String = "",
@@ -493,6 +495,7 @@ final class Drill {
         demoVideoFileName: String? = nil,
         imageData: Data? = nil
     ) {
+        self.stableID = stableID
         self.title = title
         self.category = category
         self.purpose = purpose
