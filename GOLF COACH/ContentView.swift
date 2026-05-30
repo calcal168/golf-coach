@@ -168,8 +168,6 @@ struct ContentView: View {
     @State private var sessionStateManager = SessionStateManager()
     @State private var selectedTab: AppTab = .students
     @State private var requestedRestoration: LastSessionState?
-    @State private var isShowingResumePrompt = false
-    @State private var resumeStudent: Student?
     @State private var selectedVideo: VideoPlaybackSelection?
     @State private var selectedCoachAnalysis: CoachAnalysisPlaybackSelection?
     @State private var isPreparingVideo = false
@@ -215,21 +213,6 @@ struct ContentView: View {
             AppLanguage(rawValue: selectedAppLanguage)?.locale ?? AppLanguage.english.locale
         )
         .preferredColorScheme(prefersDarkMode ? .dark : .light)
-        .alert("Resume Previous Session?", isPresented: $isShowingResumePrompt, presenting: resumeStudent) { _ in
-            Button("Resume") {
-                selectedTab = .students
-                sessionStateManager.setSelectedTab(.students)
-                requestedRestoration = sessionStateManager.state
-            }
-            Button("Start Fresh", role: .cancel) {
-                selectedTab = .students
-                sessionStateManager.startFresh()
-                sessionStateManager.setSelectedTab(.students)
-                requestedRestoration = nil
-            }
-        } message: { student in
-            Text(resumeSessionMessage(for: student))
-        }
     }
 
     private var applicationContent: some View {
@@ -325,7 +308,7 @@ struct ContentView: View {
 
     private func prepareSessionRestoration() {
         let savedState = sessionStateManager.state
-        guard let student = students.first(where: {
+        guard students.contains(where: {
             sessionStateManager.matches($0, storedIdentifier: savedState.selectedStudentID)
         }) else {
             if savedState.selectedStudentID != nil {
@@ -335,19 +318,12 @@ struct ContentView: View {
         }
 
         if savedState.hasActiveCoachingSession {
-            resumeStudent = student
-            isShowingResumePrompt = true
+            selectedTab = .students
+            sessionStateManager.setSelectedTab(.students)
+            requestedRestoration = savedState
         } else {
             requestedRestoration = savedState
         }
-    }
-
-    private func resumeSessionMessage(for student: Student) -> String {
-        var lines = [student.name]
-        if let date = sessionStateManager.state.selectedLessonDate {
-            lines.append(date.formatted(date: .abbreviated, time: .omitted))
-        }
-        return lines.joined(separator: "\n")
     }
 
     private func openVideo(_ video: LessonVideo, student: Student) {
@@ -678,7 +654,7 @@ struct StudentDirectoryView: View {
                 case .success:
                     showBackupStatus(
                         title: "Backup Saved",
-                        message: "Student profiles, packages, and appointments were saved. Video files are not included in this backup."
+                        message: "Student profiles, packages, appointments, notes, and video metadata were saved. Videos are stored locally on this device and are not included in automatic backups."
                     )
                 case .failure(let error):
                     showBackupStatus(title: "Backup Failed", message: error.localizedDescription)
@@ -863,7 +839,7 @@ struct StudentDirectoryView: View {
             self.backupPendingRestore = nil
             showBackupStatus(
                 title: "Backup Restored",
-                message: "\(backupPendingRestore.students.count) student record(s) restored. Video files are not included in student backups."
+                message: "\(backupPendingRestore.students.count) student record(s) restored. Videos are stored locally on this device and are not included in automatic backups."
             )
         } catch {
             showBackupStatus(title: "Restore Failed", message: error.localizedDescription)
@@ -2829,6 +2805,11 @@ struct CoachAnalysisView: View {
                             }
                             .scaleEffect(zoomScale)
                             .offset(zoomOffset)
+                            .contentShape(Rectangle())
+                            .gesture(coachAnalysisTransformGesture(in: proxy.size), isEnabled: !isDrawingMode)
+                            .onTapGesture(count: 2) {
+                                resetZoom()
+                            }
 
                             HStack(alignment: .top) {
                                 if isDrawingMode {
@@ -2893,7 +2874,7 @@ struct CoachAnalysisView: View {
                             Button {
                                 undoLastStroke()
                             } label: {
-                                Label("Undo Line", systemImage: "arrow.uturn.backward")
+                                Label("Undo Last Drawing", systemImage: "arrow.uturn.backward")
                             }
                             .disabled(strokes.isEmpty)
 
@@ -3120,12 +3101,7 @@ struct CoachAnalysisView: View {
     }
 
     private func endZoom() {
-        if zoomScale <= 1.01 {
-            withAnimation(.easeOut(duration: 0.18)) {
-                zoomScale = 1
-                zoomOffset = .zero
-            }
-        }
+        commitZoomTransform()
     }
 
     private func beginZoomPan() {
@@ -3133,12 +3109,49 @@ struct CoachAnalysisView: View {
     }
 
     private func updateZoomPan(translation: CGSize, in size: CGSize) {
-        guard zoomScale > 1 else { return }
+        guard zoomScale > 1 else {
+            zoomOffset = .zero
+            zoomStartOffset = .zero
+            return
+        }
         let proposedOffset = CGSize(
             width: zoomStartOffset.width + translation.width,
             height: zoomStartOffset.height + translation.height
         )
         zoomOffset = clampedZoomOffset(proposedOffset, scale: zoomScale, in: size)
+    }
+
+    private func coachAnalysisTransformGesture(in size: CGSize) -> some Gesture {
+        SimultaneousGesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    updateZoom(relativeScale: value, in: size)
+                }
+                .onEnded { _ in
+                    commitZoomTransform()
+                },
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    updateZoomPan(translation: value.translation, in: size)
+                }
+                .onEnded { _ in
+                    commitZoomTransform()
+                }
+        )
+    }
+
+    private func commitZoomTransform() {
+        zoomScale = min(max(zoomScale, 1), 5)
+        zoomOffset = zoomScale <= 1 ? .zero : zoomOffset
+        zoomStartScale = zoomScale
+        zoomStartOffset = zoomOffset
+    }
+
+    private func resetZoom() {
+        zoomScale = 1
+        zoomStartScale = 1
+        zoomOffset = .zero
+        zoomStartOffset = .zero
     }
 
     private func clampedZoomOffset(_ offset: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
@@ -3268,6 +3281,12 @@ struct LessonVideoRow: View {
                         Text(video.recordedAt, format: .dateTime.hour().minute())
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        if video.fileURL == nil {
+                            Label("Missing local video", systemImage: "exclamationmark.triangle")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.orange)
+                        }
                     }
 
                     Spacer(minLength: 8)
@@ -3842,6 +3861,13 @@ struct SwingComparisonView: View {
                 } label: {
                     Label(drawingTool == .circle ? "Circle Tool Selected" : "Circle Tool", systemImage: drawingTool == .circle ? "checkmark" : "circle")
                 }
+
+                Button {
+                    undoDrawing()
+                } label: {
+                    Label("Undo Last Drawing", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(activeStrokes.isEmpty)
 
                 Button(role: .destructive) {
                     clearDrawings()
@@ -8138,6 +8164,7 @@ struct VideoPlayerSheet: View {
     @State private var sourceFrameRate: Float = 60
     @State private var currentTimeSeconds = 0.0
     @State private var playbackRate: Float = 1.0
+    @State private var isPlaying = false
     @State private var isScrubbing = false
     @State private var isShowingInlineTrimControls = false
     @State private var activeTrimStartSeconds = 0.0
@@ -8177,7 +8204,7 @@ struct VideoPlayerSheet: View {
                     GeometryReader { proxy in
                         ZStack(alignment: .top) {
                             ZStack {
-                                ControlledVideoPlayer(player: player, showsPlaybackControls: !isDrawingMode)
+                                ControlledVideoPlayer(player: player, showsPlaybackControls: false)
                                     .background(.black)
 
                                 SwingDrawingOverlay(
@@ -8200,17 +8227,13 @@ struct VideoPlayerSheet: View {
                             }
                             .scaleEffect(analysisZoomScale)
                             .offset(analysisZoomOffset)
+                            .contentShape(Rectangle())
+                            .gesture(analysisTransformGesture(in: proxy.size), isEnabled: !isDrawingMode)
+                            .onTapGesture(count: 2) {
+                                resetAnalysisZoom()
+                            }
 
                             HStack(alignment: .top) {
-                                if isDrawingMode {
-                                    DrawingToolPalette(
-                                        selectedTool: $selectedDrawingTool,
-                                        selectedColor: $selectedDrawingColor,
-                                        canUndo: !strokes.isEmpty,
-                                        onUndo: undoLastStroke
-                                    )
-                                }
-
                                 Spacer()
 
                                 if isRecordingCoachAnalysis {
@@ -8245,44 +8268,93 @@ struct VideoPlayerSheet: View {
 
                 if let url = video.fileURL {
                     ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            toggleCoachAnalysisRecording()
-                        } label: {
-                            Label(
-                                isRecordingCoachAnalysis ? "Stop Coach Analysis Recording" : "Start Coach Analysis Recording",
-                                systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "record.circle"
-                            )
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(.red)
-                        }
-                        .accessibilityLabel(isRecordingCoachAnalysis ? "Stop coach analysis recording" : "Start coach analysis recording")
-                    }
-
-                    ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Button {
-                                isDrawingMode.toggle()
-                                if isDrawingMode {
-                                    player?.pause()
-                                }
+                                selectedDrawingTool = .line
+                                isDrawingMode = true
+                                player?.pause()
+                                isPlaying = false
                                 saveDrawingStrokes()
                             } label: {
-                                Label(isDrawingMode ? "Stop Drawing" : "Draw Lines", systemImage: "pencil.and.outline")
+                                Label(selectedDrawingTool == .line && isDrawingMode ? "Line Tool Selected" : "Line Tool", systemImage: selectedDrawingTool == .line && isDrawingMode ? "checkmark" : "line.diagonal")
+                            }
+
+                            Button {
+                                selectedDrawingTool = .circle
+                                isDrawingMode = true
+                                player?.pause()
+                                isPlaying = false
+                                saveDrawingStrokes()
+                            } label: {
+                                Label(selectedDrawingTool == .circle && isDrawingMode ? "Circle Tool Selected" : "Circle Tool", systemImage: selectedDrawingTool == .circle && isDrawingMode ? "checkmark" : "circle")
+                            }
+
+                            if isDrawingMode {
+                                Button {
+                                    isDrawingMode = false
+                                    saveDrawingStrokes()
+                                } label: {
+                                    Label("Stop Drawing", systemImage: "pencil.slash")
+                                }
                             }
 
                             Button {
                                 undoLastStroke()
                             } label: {
-                                Label("Undo Line", systemImage: "arrow.uturn.backward")
+                                Label("Undo Last Drawing", systemImage: "arrow.uturn.backward")
                             }
                             .disabled(strokes.isEmpty)
 
                             Button(role: .destructive) {
                                 clearStrokes()
                             } label: {
-                                Label("Clear Lines", systemImage: "trash")
+                                Label("Clear Drawing", systemImage: "trash")
                             }
                             .disabled(strokes.isEmpty)
+
+                            Divider()
+
+                            Button {
+                                toggleCoachAnalysisRecording()
+                            } label: {
+                                Label(
+                                    isRecordingCoachAnalysis ? "Stop Coach Analysis Recording" : "Coach Analysis",
+                                    systemImage: isRecordingCoachAnalysis ? "stop.circle.fill" : "waveform.path.ecg"
+                                )
+                            }
+                            .disabled(coachAnalysisRecorder.isRecording && !isRecordingCoachAnalysis)
+
+                            Button {
+                                self.player?.playImmediately(atRate: playbackRate)
+                                isPlaying = true
+                            } label: {
+                                Label("Play All", systemImage: "play.fill")
+                            }
+
+                            Button {
+                                self.player?.pause()
+                                isPlaying = false
+                            } label: {
+                                Label("Pause All", systemImage: "pause.fill")
+                            }
+
+                            Menu {
+                                Button {
+                                    setPlaybackRate(0.5)
+                                } label: {
+                                    Label("0.5x", systemImage: playbackRate == 0.5 ? "checkmark" : "speedometer")
+                                }
+
+                                Button {
+                                    setPlaybackRate(1.0)
+                                } label: {
+                                    Label("1.0x", systemImage: playbackRate == 1.0 ? "checkmark" : "speedometer")
+                                }
+                            } label: {
+                                Label("Speed \(playbackRate, specifier: "%.1f")x", systemImage: "speedometer")
+                            }
+
+                            Divider()
 
                             Button {
                                 isEditingVideo = true
@@ -8326,37 +8398,7 @@ struct VideoPlayerSheet: View {
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 12) {
-                    VideoReviewControls(
-                        currentTime: $currentTimeSeconds,
-                        duration: durationSeconds,
-                        playbackRate: playbackRate,
-                        frameRate: sourceFrameRate,
-                        showsDetailedControls: !isRecordingCoachAnalysis,
-                        onScrubBegan: {
-                            isScrubbing = true
-                            player?.pause()
-                        },
-                        onScrubChanged: { time in
-                            seek(to: time)
-                        },
-                        onScrubEnded: { time in
-                            isScrubbing = false
-                            seek(to: time)
-                        },
-                        onRateSelected: { rate in
-                            setPlaybackRate(rate)
-                        },
-                        onStepFrameBackward: {
-                            stepFrame(direction: -1)
-                        },
-                        onStepFrameForward: {
-                            stepFrame(direction: 1)
-                        },
-                        onTrim: {
-                            player?.pause()
-                            toggleInlineTrimControls()
-                        }
-                    )
+                    lessonVideoPlaybackControls
 
                     if isShowingInlineTrimControls && !isRecordingCoachAnalysis {
                         InlineTrimControls(
@@ -8435,6 +8477,88 @@ struct VideoPlayerSheet: View {
         }
     }
 
+    private var lessonVideoPlaybackControls: some View {
+        HStack(spacing: 10) {
+            Button {
+                togglePlayback()
+            } label: {
+                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(isPreparingPlayback)
+            .accessibilityLabel(isPlaying ? "Pause" : "Play")
+
+            Button {
+                stepFrame(direction: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel("Back 1 Frame")
+
+            VStack(spacing: 3) {
+                HStack {
+                    Text(timeString(currentTimeSeconds))
+                    Spacer()
+                    Text(timeString(durationSeconds))
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+                Slider(
+                    value: Binding(
+                        get: { currentTimeSeconds },
+                        set: { value in
+                            currentTimeSeconds = min(max(value, 0), durationSeconds)
+                            seek(to: currentTimeSeconds)
+                        }
+                    ),
+                    in: 0...max(durationSeconds, 0.1),
+                    onEditingChanged: { editing in
+                        if editing {
+                            isScrubbing = true
+                            player?.pause()
+                            isPlaying = false
+                        } else {
+                            isScrubbing = false
+                            seek(to: currentTimeSeconds)
+                        }
+                    }
+                )
+            }
+
+            Button {
+                stepFrame(direction: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel("Forward 1 Frame")
+
+            Button {
+                player?.pause()
+                isPlaying = false
+                toggleInlineTrimControls()
+            } label: {
+                Label("Trim", systemImage: "scissors")
+                    .labelStyle(.iconOnly)
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isRecordingCoachAnalysis)
+            .accessibilityLabel("Trim")
+        }
+        .font(.caption.weight(.semibold))
+    }
+
     private func toggleCoachAnalysisRecording() {
         if isRecordingCoachAnalysis {
             stopCoachAnalysisRecording()
@@ -8503,12 +8627,7 @@ struct VideoPlayerSheet: View {
     }
 
     private func endAnalysisZoom() {
-        if analysisZoomScale <= 1.01 {
-            withAnimation(.easeOut(duration: 0.18)) {
-                analysisZoomScale = 1
-                analysisZoomOffset = .zero
-            }
-        }
+        commitAnalysisTransform()
     }
 
     private func beginAnalysisZoomPan() {
@@ -8516,13 +8635,50 @@ struct VideoPlayerSheet: View {
     }
 
     private func updateAnalysisZoomPan(translation: CGSize, in size: CGSize) {
-        guard analysisZoomScale > 1 else { return }
+        guard analysisZoomScale > 1 else {
+            analysisZoomOffset = .zero
+            analysisZoomStartOffset = .zero
+            return
+        }
 
         let proposedOffset = CGSize(
             width: analysisZoomStartOffset.width + translation.width,
             height: analysisZoomStartOffset.height + translation.height
         )
         analysisZoomOffset = clampedAnalysisZoomOffset(proposedOffset, scale: analysisZoomScale, in: size)
+    }
+
+    private func analysisTransformGesture(in size: CGSize) -> some Gesture {
+        SimultaneousGesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    updateAnalysisZoom(relativeScale: value, in: size)
+                }
+                .onEnded { _ in
+                    commitAnalysisTransform()
+                },
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    updateAnalysisZoomPan(translation: value.translation, in: size)
+                }
+                .onEnded { _ in
+                    commitAnalysisTransform()
+                }
+        )
+    }
+
+    private func commitAnalysisTransform() {
+        analysisZoomScale = min(max(analysisZoomScale, 1), 5)
+        analysisZoomOffset = analysisZoomScale <= 1 ? .zero : analysisZoomOffset
+        analysisZoomStartScale = analysisZoomScale
+        analysisZoomStartOffset = analysisZoomOffset
+    }
+
+    private func resetAnalysisZoom() {
+        analysisZoomScale = 1
+        analysisZoomStartScale = 1
+        analysisZoomOffset = .zero
+        analysisZoomStartOffset = .zero
     }
 
     private func clampedAnalysisZoomOffset(_ offset: CGSize, scale: CGFloat, in size: CGSize) -> CGSize {
@@ -8646,7 +8802,19 @@ struct VideoPlayerSheet: View {
             if let currentTime = player?.currentTime().seconds, currentTime.isFinite {
                 currentTimeSeconds = max(0, min(currentTime, durationSeconds))
             }
+            isPlaying = player?.rate != 0
             try? await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    private func togglePlayback() {
+        guard let player else { return }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.playImmediately(atRate: playbackRate)
+            isPlaying = true
         }
     }
 
@@ -8666,6 +8834,7 @@ struct VideoPlayerSheet: View {
 
     private func stepFrame(direction: Int) {
         player?.pause()
+        isPlaying = false
         let frameStep = 1 / max(Double(sourceFrameRate), 1)
         seek(to: currentTimeSeconds + (Double(direction) * frameStep))
     }
@@ -8673,7 +8842,9 @@ struct VideoPlayerSheet: View {
     private func setPlaybackRate(_ rate: Float) {
         playbackRate = rate
         applyPlaybackTrimLimits()
-        player?.rate = rate
+        if isPlaying {
+            player?.rate = rate
+        }
     }
 
     private func applyStoredTrimIfNeeded() {
@@ -10247,6 +10418,7 @@ struct GolfCoachBackupSnapshot: Codable {
 }
 
 struct StudentBackupRecord: Codable {
+    let studentIdentifier: String?
     let name: String
     let phoneNumber: String
     let email: String
@@ -10261,9 +10433,53 @@ struct StudentBackupRecord: Codable {
     let photoData: Data?
     let packages: [LessonPackageBackupRecord]
     let lessons: [LessonAppointmentBackupRecord]
+    let videos: [LessonVideoBackupRecord]
     let sessionNotes: [LessonSessionNoteBackupRecord]
 
+    enum CodingKeys: String, CodingKey {
+        case studentIdentifier
+        case name
+        case phoneNumber
+        case email
+        case birthday
+        case referralPersonName
+        case age
+        case yearsOfExperience
+        case handicap
+        case golfGoal
+        case jobInfo
+        case createdAt
+        case photoData
+        case packages
+        case lessons
+        case videos
+        case sessionNotes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        studentIdentifier = try container.decodeIfPresent(String.self, forKey: .studentIdentifier)
+        name = try container.decode(String.self, forKey: .name)
+        phoneNumber = try container.decode(String.self, forKey: .phoneNumber)
+        email = try container.decode(String.self, forKey: .email)
+        birthday = try container.decodeIfPresent(Date.self, forKey: .birthday)
+        referralPersonName = try container.decodeIfPresent(String.self, forKey: .referralPersonName)
+        age = try container.decodeIfPresent(String.self, forKey: .age)
+        yearsOfExperience = try container.decodeIfPresent(String.self, forKey: .yearsOfExperience)
+        handicap = try container.decodeIfPresent(String.self, forKey: .handicap)
+        golfGoal = try container.decodeIfPresent(String.self, forKey: .golfGoal)
+        jobInfo = try container.decodeIfPresent(String.self, forKey: .jobInfo)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        photoData = try container.decodeIfPresent(Data.self, forKey: .photoData)
+        packages = try container.decode([LessonPackageBackupRecord].self, forKey: .packages)
+        lessons = try container.decode([LessonAppointmentBackupRecord].self, forKey: .lessons)
+        videos = try container.decodeIfPresent([LessonVideoBackupRecord].self, forKey: .videos) ?? []
+        sessionNotes = try container.decode([LessonSessionNoteBackupRecord].self, forKey: .sessionNotes)
+    }
+
     init(student: Student) {
+        let storedStudentIdentifier = student.persistentModelID.storeIdentifier
+        studentIdentifier = storedStudentIdentifier
         name = student.name
         phoneNumber = student.phoneNumber
         email = student.email
@@ -10278,6 +10494,13 @@ struct StudentBackupRecord: Codable {
         photoData = student.photoData
         packages = student.packages.map(LessonPackageBackupRecord.init)
         lessons = student.lessons.map(LessonAppointmentBackupRecord.init)
+        videos = LessonVideoDisplayStore.uniqueVideos(in: student.videos).map { video in
+            LessonVideoBackupRecord(
+                video: video,
+                studentIdentifier: storedStudentIdentifier,
+                lessonIdentifier: Self.lessonIdentifier(for: video, in: student.lessons)
+            )
+        }
         sessionNotes = student.sessionNotes.map(LessonSessionNoteBackupRecord.init)
     }
 
@@ -10297,8 +10520,17 @@ struct StudentBackupRecord: Codable {
             photoData: photoData,
             packages: packages.map { $0.makePackage() },
             lessons: lessons.map { $0.makeLesson() },
+            videos: videos.map { $0.makeVideo() },
             sessionNotes: sessionNotes.map { $0.makeNote() }
         )
+    }
+
+    private static func lessonIdentifier(for video: LessonVideo, in lessons: [LessonAppointment]) -> String? {
+        let lessonDate = video.lessonDate ?? video.recordedAt
+        return lessons
+            .first { Calendar.current.isDate($0.scheduledAt, inSameDayAs: lessonDate) }?
+            .persistentModelID
+            .storeIdentifier
     }
 }
 
@@ -10389,6 +10621,64 @@ struct LessonAppointmentBackupRecord: Codable {
             reminderLeadTime: ReminderLeadTime(rawValue: reminderLeadTimeRawValue) ?? .none,
             isCompleted: isCompleted
         )
+    }
+}
+
+struct LessonVideoBackupRecord: Codable {
+    let studentIdentifier: String?
+    let lessonIdentifier: String?
+    let title: String
+    let recordedAt: Date
+    let notes: String
+    let originalLocalVideoPath: String?
+    let lessonDate: Date?
+    let durationSeconds: Double?
+    let thumbnailReference: String?
+    let focusNotes: String?
+    let problemNotes: String?
+    let comparisonNotes: String?
+    let analysisDrawingData: String?
+    let trimStartSeconds: Double?
+    let trimEndSeconds: Double?
+
+    init(video: LessonVideo, studentIdentifier: String?, lessonIdentifier: String?) {
+        self.studentIdentifier = studentIdentifier
+        self.lessonIdentifier = lessonIdentifier
+        title = video.title
+        recordedAt = video.recordedAt
+        notes = video.notes
+        originalLocalVideoPath = video.fileURLString
+        lessonDate = video.lessonDate
+        durationSeconds = Self.durationSeconds(for: video.fileURL)
+        thumbnailReference = nil
+        focusNotes = video.focusNotes
+        problemNotes = video.problemNotes
+        comparisonNotes = video.comparisonNotes
+        analysisDrawingData = video.analysisDrawingData
+        trimStartSeconds = video.trimStartSeconds
+        trimEndSeconds = video.trimEndSeconds
+    }
+
+    func makeVideo() -> LessonVideo {
+        LessonVideo(
+            title: title,
+            recordedAt: recordedAt,
+            notes: notes,
+            fileURLString: originalLocalVideoPath,
+            lessonDate: lessonDate,
+            focusNotes: focusNotes,
+            problemNotes: problemNotes,
+            comparisonNotes: comparisonNotes,
+            analysisDrawingData: analysisDrawingData,
+            trimStartSeconds: trimStartSeconds,
+            trimEndSeconds: trimEndSeconds
+        )
+    }
+
+    private static func durationSeconds(for url: URL?) -> Double? {
+        guard let url else { return nil }
+        let duration = AVURLAsset(url: url).duration.seconds
+        return duration.isFinite && duration > 0 ? duration : nil
     }
 }
 
